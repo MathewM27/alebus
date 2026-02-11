@@ -1,3 +1,4 @@
+import { setBootReady } from '@/utils/boot';
 import * as storage from '@/utils/storage';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
@@ -29,6 +30,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Error checking auth:', error);
     } finally {
       setIsLoading(false);
+      // Fallback boot signal for deep-link scenarios where
+      // index.tsx may not mount and can't call setBootReady().
+      setBootReady();
     }
   };
 

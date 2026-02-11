@@ -1,115 +1,77 @@
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { OnboardingButton } from '@/components/onboarding/OnboardingButton';
+import { OnboardingProgress } from '@/components/onboarding/OnboardingProgress';
+import { Image } from 'expo-image';
 import { Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+
+// Alebus brand colors
+const BLACK = '#000000';
 
 export default function OnboardingFeatures() {
+  const handleContinue = () => {
+    router.push('/(boot)/onboarding/permissions' as Href);
+  };
+
   return (
-    <ThemedView style={styles.container}>
-      <StatusBar style="auto" />
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <ThemedText type="title" style={styles.title}>
-          Why Alebus?
-        </ThemedText>
-        
-        <View style={styles.features}>
-          <View style={styles.featureCard}>
-            <ThemedText style={styles.featureIcon}>📍</ThemedText>
-            <ThemedText type="subtitle" style={styles.featureTitle}>
-              Real-Time Tracking
-            </ThemedText>
-            <ThemedText style={styles.featureDescription}>
-              See exactly where your bus is on the map and get accurate arrival times.
-            </ThemedText>
-          </View>
+    <View style={styles.container}>
+      <StatusBar style="light" />
 
-          <View style={styles.featureCard}>
-            <ThemedText style={styles.featureIcon}>🗺️</ThemedText>
-            <ThemedText type="subtitle" style={styles.featureTitle}>
-              Smart Journey Planning
-            </ThemedText>
-            <ThemedText style={styles.featureDescription}>
-              Get the best route recommendations with multiple journey options.
-            </ThemedText>
-          </View>
+      <View style={styles.content}>
+        <Image
+          source={require('@/assets/images/board1.png')}
+          style={styles.image}
+          contentFit="contain"
+        />
 
-          <View style={styles.featureCard}>
-            <ThemedText style={styles.featureIcon}>🔔</ThemedText>
-            <ThemedText type="subtitle" style={styles.featureTitle}>
-              Arrival Notifications
-            </ThemedText>
-            <ThemedText style={styles.featureDescription}>
-              Receive alerts when your bus is approaching so you never miss it.
-            </ThemedText>
-          </View>
-        </View>
-      </ScrollView>
+        <Text style={styles.title}>Real-time bus tracking</Text>
+        <Text style={styles.subtitle}>Avoid the waits at the stop</Text>
+      </View>
 
       <View style={styles.footer}>
-        <View 
-          style={styles.button}
-          onTouchEnd={() => router.push('/(boot)/onboarding/permissions' as Href)}
-        >
-          <ThemedText style={styles.buttonText}>Next</ThemedText>
+        <OnboardingProgress currentStep={1} totalSteps={3} />
+        <View style={styles.buttonContainer}>
+          <OnboardingButton onPress={handleContinue} title="Continue" variant="primary" />
         </View>
       </View>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: BLACK,
   },
-  scrollContent: {
-    padding: 32,
-    paddingBottom: 100,
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  image: {
+    width: 280,
+    height: 280,
+    marginBottom: 48,
   },
   title: {
-    marginBottom: 32,
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#fff',
     textAlign: 'center',
-  },
-  features: {
-    gap: 24,
-  },
-  featureCard: {
-    padding: 24,
-    borderRadius: 16,
-    backgroundColor: 'rgba(10, 126, 164, 0.1)',
-    alignItems: 'center',
-  },
-  featureIcon: {
-    fontSize: 48,
     marginBottom: 12,
   },
-  featureTitle: {
-    marginBottom: 8,
+  subtitle: {
+    fontSize: 18,
+    color: 'rgba(255, 255, 255, 0.6)',
     textAlign: 'center',
-  },
-  featureDescription: {
-    textAlign: 'center',
-    opacity: 0.7,
-    lineHeight: 20,
   },
   footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 32,
-    backgroundColor: 'transparent',
+    paddingHorizontal: 24,
+    paddingBottom: 50,
+    gap: 32,
   },
-  button: {
-    backgroundColor: '#0a7ea4',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+  buttonContainer: {
+    gap: 12,
   },
 });

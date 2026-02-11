@@ -1,87 +1,72 @@
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { OnboardingButton } from '@/components/onboarding/OnboardingButton';
+import { OnboardingProgress } from '@/components/onboarding/OnboardingProgress';
+import { Image } from 'expo-image';
 import { Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+
+// Alebus brand colors
+const BLACK = '#000000';
+const ACCENT = '#c1ec72';
 
 export default function OnboardingWelcome() {
-  return (
-    <ThemedView style={styles.container}>
-      <StatusBar style="auto" />
-      <View style={styles.content}>
-        <ThemedText type="title" style={styles.title}>
-          Welcome to Alebus
-        </ThemedText>
-        <ThemedText style={styles.subtitle}>
-          Your smart companion for real-time bus tracking and journey planning
-        </ThemedText>
-        
-        <View style={styles.iconContainer}>
-          <ThemedText style={styles.icon}>🚌</ThemedText>
-        </View>
+  const handleContinue = () => {
+    router.push('/(boot)/onboarding/features' as Href);
+  };
 
-        <ThemedText style={styles.description}>
-          Never miss your bus again. Track live bus locations, plan your journeys, and get real-time arrival notifications.
-        </ThemedText>
+  return (
+    <View style={styles.container}>
+      <StatusBar style="light" />
+      
+      <View style={styles.content}>
+        <Image
+          source={require('@/assets/images/AlebusLogo.png')}
+          style={styles.logo}
+          contentFit="contain"
+        />
+        
+        <Text style={styles.title}>Welcome to Alebus</Text>
       </View>
 
       <View style={styles.footer}>
-        <View 
-          style={styles.button}
-          onTouchEnd={() => router.push('/(boot)/onboarding/features' as Href)}
-        >
-          <ThemedText style={styles.buttonText}>Get Started</ThemedText>
+        <OnboardingProgress currentStep={0} totalSteps={3} />
+        <View style={styles.buttonContainer}>
+          <OnboardingButton onPress={handleContinue} title="Continue" variant="primary" />
         </View>
       </View>
-    </ThemedView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: BLACK,
   },
   content: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    paddingHorizontal: 40,
+  },
+  logo: {
+    width: 180,
+    height: 180,
+    marginBottom: 32,
   },
   title: {
-    marginBottom: 16,
+    fontSize: 32,
+    fontWeight: '600',
+    color: '#fff',
     textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 18,
-    textAlign: 'center',
-    marginBottom: 48,
-    opacity: 0.8,
-  },
-  iconContainer: {
-    marginVertical: 48,
-  },
-  icon: {
-    fontSize: 120,
-  },
-  description: {
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 24,
-    opacity: 0.7,
+    letterSpacing: 0.5,
   },
   footer: {
-    padding: 32,
+    paddingHorizontal: 24,
+    paddingBottom: 50,
+    gap: 32,
   },
-  button: {
-    backgroundColor: '#0a7ea4',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+  buttonContainer: {
+    gap: 12,
   },
 });

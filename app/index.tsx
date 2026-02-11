@@ -1,11 +1,10 @@
+import { setBootReady } from '@/utils/boot';
 import * as storage from '@/utils/storage';
 import { Href, router, useSegments } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
 
 export default function Index() {
   const segments = useSegments();
-  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     checkAuthAndRedirect();
@@ -13,22 +12,22 @@ export default function Index() {
 
   const checkAuthAndRedirect = async () => {
     try {
-      // Get first segment to check if user is already in a route group
+      // TEMPORARY: Uncomment to reset onboarding for testing
+      await storage.clear();
+      
+      // Don't redirect if user is already deep-linked into a route group.
       const inGroup = segments[0] as string;
-      
-      // Valid route groups - don't redirect if user is already in one
       const validGroups = ['(boot)', '(tabs)', '(modals)'];
-      const isInValidGroup = validGroups.includes(inGroup);
-      
-      // Only redirect if we're at root, not if deep linked into a group
-      if (isInValidGroup) {
-        setIsLoading(false);
+      if (validGroups.includes(inGroup)) {
+        setBootReady();
         return;
       }
 
-      // Check onboarding and auth status
-      const hasCompletedOnboarding = await storage.getOnboardingComplete();
-      const userId = await storage.getUserId();
+      // Read boot-critical values in parallel for speed.
+      const [hasCompletedOnboarding, userId] = await Promise.all([
+        storage.getOnboardingComplete(),
+        storage.getUserId(),
+      ]);
 
       if (!hasCompletedOnboarding) {
         router.replace('/(boot)/onboarding' as Href);
@@ -39,29 +38,15 @@ export default function Index() {
       }
     } catch (error) {
       console.error('Error checking auth:', error);
-      // Default to onboarding on error
       router.replace('/(boot)/onboarding' as Href);
     } finally {
-      setIsLoading(false);
+      // Signal that boot checks are complete.
+      // The root layout awaits this before hiding the splash.
+      setBootReady();
     }
   };
 
-  if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#0a7ea4" />
-      </View>
-    );
-  }
-
+  // Return nothing — the native splash + overlay covers this screen.
+  // No ActivityIndicator needed; the splash IS the loading indicator.
   return null;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-});

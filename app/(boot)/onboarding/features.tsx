@@ -5,7 +5,7 @@ import { Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, Text, View } from 'react-native';
 
-// Alebus brand colors
+
 const BLACK = '#000000';
 
 export default function OnboardingFeatures() {

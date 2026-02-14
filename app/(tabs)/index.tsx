@@ -1,11 +1,9 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
-  Animated,
   Dimensions,
-  KeyboardAvoidingView,
-  Platform,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,11 +11,20 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import MapView, { Marker, UrlTile } from 'react-native-maps';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 
 /* ───────────── constants ───────────── */
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const { height: SCREEN_H } = Dimensions.get('window');
 const ACCENT = '#c1ec72';
 const BG = '#000000';
 const SHEET_BG = '#0E0E10';
@@ -25,24 +32,82 @@ const SURFACE = '#151518';
 const TEXT_PRIMARY = '#FFFFFF';
 const TEXT_SECONDARY = 'rgba(255,255,255,0.65)';
 const BORDER = 'rgba(255,255,255,0.12)';
-const SEPARATOR = 'rgba(255,255,255,0.08)';
 
-const INITIAL_REGION = {
-  latitude: -20.348404,
-  longitude: 57.552152,
-  latitudeDelta: 0.25,
-  longitudeDelta: 0.25,
-};
+/* snap points – heights measured from the bottom of the screen */
+const SNAP_LOW = 140;
+const SNAP_MID = SCREEN_H * 0.50;
+const SNAP_HIGH = SCREEN_H * 0.55;
+
+/* translateY values that correspond to each snap height.
+   translateY = SCREEN_H - snapHeight  (lower = taller sheet) */
+const TY_HIGH = SCREEN_H - SNAP_HIGH;
+const TY_MID = SCREEN_H - SNAP_MID;
+const TY_LOW = SCREEN_H - SNAP_LOW;
+
+const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
 
 /* placeholder bus markers around Mauritius */
 const BUS_MARKERS = [
-  { id: '1', latitude: -20.1609, longitude: 57.5012, title: 'Port Louis Terminal' },
-  { id: '2', latitude: -20.2309, longitude: 57.4992, title: 'Quatre Bornes Stop' },
-  { id: '3', latitude: -20.3168, longitude: 57.5225, title: 'Curepipe Central' },
-  { id: '4', latitude: -20.2631, longitude: 57.5803, title: 'Centre de Flacq' },
-  { id: '5', latitude: -20.4398, longitude: 57.6592, title: 'Mahebourg Station' },
-  { id: '6', latitude: -20.1000, longitude: 57.5700, title: 'Pamplemousses' },
+  { id: '1', lat: -20.1609, lng: 57.5012, title: 'Port Louis Terminal' },
+  { id: '2', lat: -20.2309, lng: 57.4992, title: 'Quatre Bornes Stop' },
+  { id: '3', lat: -20.3168, lng: 57.5225, title: 'Curepipe Central' },
+  { id: '4', lat: -20.2631, lng: 57.5803, title: 'Centre de Flacq' },
+  { id: '5', lat: -20.4398, lng: 57.6592, title: 'Mahebourg Station' },
+  { id: '6', lat: -20.1000, lng: 57.5700, title: 'Pamplemousses' },
 ];
+
+/* Leaflet map HTML — dark CartoDB tiles, no API key */
+const LEAFLET_HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body, #map { width: 100%; height: 100%; background: #1a1a1c; }
+    .leaflet-control-attribution { display: none !important; }
+    .leaflet-control-zoom { display: none !important; }
+    .bus-marker {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: ${ACCENT}; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 8px rgba(193,236,114,0.4);
+    }
+    .bus-marker-inner { width: 8px; height: 8px; border-radius: 50%; background: #000; }
+    .leaflet-popup-content-wrapper {
+      background: #151518; color: #fff; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    }
+    .leaflet-popup-tip { background: #151518; }
+    .leaflet-popup-content { margin: 8px 12px; font-size: 13px; font-family: system-ui; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    var map = L.map('map', {
+      center: [-20.348404, 57.552152],
+      zoom: 10,
+      zoomControl: false,
+      attributionControl: false
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19, subdomains: 'abcd'
+    }).addTo(map);
+    var markers = ${JSON.stringify(BUS_MARKERS)};
+    markers.forEach(function(m) {
+      var icon = L.divIcon({
+        className: '',
+        html: '<div class="bus-marker"><div class="bus-marker-inner"></div></div>',
+        iconSize: [22, 22], iconAnchor: [11, 11]
+      });
+      L.marker([m.lat, m.lng], { icon: icon }).addTo(map).bindPopup(m.title);
+    });
+  <\/script>
+</body>
+</html>
+`;
 
 /* mock recent places */
 const RECENT_PLACES = [
@@ -53,385 +118,345 @@ const RECENT_PLACES = [
   { id: '5', type: 'recent' as const, title: 'Mahebourg Waterfront', subtitle: 'Rue des Hollandais, Mahebourg 50802' },
 ];
 
-/* ───────────── sub-components ───────────── */
+/* ───────────── small sub-components ───────────── */
 
-function BusMarkerView() {
+function MenuButton({ onPress, top }: { onPress: () => void; top: number }) {
   return (
-    <View style={markerStyles.outer}>
-      <View style={markerStyles.inner} />
+    <View style={[menuStyles.wrap, { top: top + 8 }]}>
+      <Pressable onPress={onPress} style={menuStyles.btn}>
+        <MaterialCommunityIcons name="menu" size={22} color={TEXT_PRIMARY} />
+      </Pressable>
     </View>
   );
 }
-
-const markerStyles = StyleSheet.create({
-  outer: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: BG,
-  },
-});
-
-function MenuButton({ onPress, top }: { onPress: () => void; top: number }) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(1)).current;
-
-  const handlePressIn = () => {
-    Animated.parallel([
-      Animated.spring(scale, { toValue: 0.92, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0.85, duration: 100, useNativeDriver: true }),
-    ]).start();
-  };
-  const handlePressOut = () => {
-    Animated.parallel([
-      Animated.spring(scale, { toValue: 1, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 1, duration: 100, useNativeDriver: true }),
-    ]).start();
-  };
-
-  return (
-    <Animated.View style={[menuStyles.wrap, { top: top + 8 }, { transform: [{ scale }], opacity }]}>
-      <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} style={menuStyles.btn}>
-        <MaterialCommunityIcons name="menu" size={22} color={TEXT_PRIMARY} />
-      </Pressable>
-    </Animated.View>
-  );
-}
-
 const menuStyles = StyleSheet.create({
   wrap: { position: 'absolute', left: 16, zIndex: 10 },
   btn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
   },
 });
 
 function QuickActionButton({
-  icon,
-  label,
-  active,
-  onPress,
+  icon, active, onPress,
 }: {
   icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  label: string;
   active: boolean;
   onPress: () => void;
 }) {
-  const scale = useRef(new Animated.Value(1)).current;
-
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={() => Animated.spring(scale, { toValue: 0.93, useNativeDriver: true }).start()}
-        onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
-        style={[quickStyles.btn, active && quickStyles.btnActive]}
-      >
-        <MaterialCommunityIcons name={icon} size={18} color={active ? ACCENT : TEXT_SECONDARY} />
-        <Text style={[quickStyles.label, active && quickStyles.labelActive]}>{label}</Text>
-      </Pressable>
-    </Animated.View>
+    <Pressable onPress={onPress} style={[quickStyles.btn, active && quickStyles.btnActive]}>
+      <MaterialCommunityIcons name={icon} size={20} color={active ? ACCENT : TEXT_SECONDARY} />
+    </Pressable>
   );
 }
-
 const quickStyles = StyleSheet.create({
   btn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
+    width: 48, height: 48, borderRadius: 14,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
   },
   btnActive: { borderColor: ACCENT },
-  label: { color: TEXT_SECONDARY, fontSize: 13, fontWeight: '500' },
-  labelActive: { color: ACCENT },
 });
 
-function PlaceRow({
-  item,
-  isLast,
-}: {
-  item: (typeof RECENT_PLACES)[number];
-  isLast: boolean;
-}) {
-  const scale = useRef(new Animated.Value(1)).current;
-
+function PlaceCard({ item }: { item: (typeof RECENT_PLACES)[number] }) {
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
-      <Pressable
-        onPress={() => console.log('Navigate to', item.title)}
-        onPressIn={() => Animated.spring(scale, { toValue: 0.98, useNativeDriver: true }).start()}
-        onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true }).start()}
-        style={placeStyles.row}
-      >
+    <Pressable onPress={() => console.log('Navigate to', item.title)} style={placeStyles.card}>
+      <View style={placeStyles.titleRow}>
         <View style={placeStyles.iconWrap}>
           <MaterialCommunityIcons
             name={item.type === 'recent' ? 'clock-outline' : 'map-marker-outline'}
-            size={20}
-            color={TEXT_SECONDARY}
+            size={16} color={TEXT_SECONDARY}
           />
         </View>
-        <View style={placeStyles.textWrap}>
-          <Text style={placeStyles.title} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text style={placeStyles.subtitle} numberOfLines={1}>
-            {item.subtitle}
-          </Text>
-        </View>
-        <MaterialCommunityIcons name="chevron-right" size={20} color="rgba(255,255,255,0.3)" />
-      </Pressable>
-      {!isLast && <View style={placeStyles.separator} />}
-    </Animated.View>
+        <Text style={placeStyles.title} numberOfLines={1}>{item.title}</Text>
+      </View>
+      <Text style={placeStyles.subtitle} numberOfLines={2}>{item.subtitle}</Text>
+    </Pressable>
   );
 }
-
 const placeStyles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
+  card: {
+    width: 220, backgroundColor: SURFACE, borderRadius: 16,
+    borderWidth: 1, borderColor: BORDER, padding: 14, marginRight: 12,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   iconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: SURFACE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center', justifyContent: 'center', marginRight: 8,
   },
-  textWrap: { flex: 1, marginRight: 8 },
-  title: { color: TEXT_PRIMARY, fontSize: 15, fontWeight: '500', marginBottom: 2 },
-  subtitle: { color: TEXT_SECONDARY, fontSize: 13 },
-  separator: { height: 1, backgroundColor: SEPARATOR, marginLeft: 52 },
+  title: { color: TEXT_PRIMARY, fontSize: 15, fontWeight: '500', flex: 1 },
+  subtitle: { color: TEXT_SECONDARY, fontSize: 13, lineHeight: 18 },
 });
 
-/* ───────────── main screen ───────────── */
+/* ─────────────────────────────────────────────────
+   HomeScreen — draggable bottom sheet with 3 snaps
+   ───────────────────────────────────────────────── */
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [searchText, setSearchText] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [activeQuick, setActiveQuick] = useState<string | null>(null);
+  const [destination, setDestination] = useState('');
 
-  const SHEET_HEIGHT = SCREEN_H * 0.50;
+  const isButtonActive = searchText.trim() !== '' && destination.trim() !== '';
 
+  /* ── shared values ── */
+  const translateY = useSharedValue(TY_LOW);   // start collapsed
+  const ctx = useSharedValue(0);               // gesture context
+
+  /* ── helpers (callable from UI thread via runOnJS) ── */
+  const dismissKB = useCallback(() => Keyboard.dismiss(), []);
+
+  const snapTo = useCallback((target: number) => {
+    'worklet';
+    translateY.value = withSpring(target, SPRING_CFG);
+  }, []);
+
+  /* called from JS thread (e.g. onFocus) */
+  const expandToMid = useCallback(() => {
+    translateY.value = withSpring(TY_MID, SPRING_CFG);
+  }, []);
+
+  /* ── Pan gesture on the entire sheet ── */
+  const pan = Gesture.Pan()
+    .onStart(() => {
+      ctx.value = translateY.value;
+    })
+    .onUpdate((e) => {
+      // clamp between fully expanded and fully collapsed
+      translateY.value = Math.max(TY_HIGH, Math.min(ctx.value + e.translationY, TY_LOW));
+    })
+    .onEnd((e) => {
+      const cur = translateY.value;
+      const v = e.velocityY;
+      const FLING = 600;
+
+      // fast fling → snap in fling direction
+      if (Math.abs(v) > FLING) {
+        if (v > 0) {
+          // flung downward
+          snapTo(cur < TY_MID ? TY_MID : TY_LOW);
+          if (cur >= TY_MID) runOnJS(dismissKB)();
+        } else {
+          // flung upward
+          snapTo(cur > TY_MID ? TY_MID : TY_HIGH);
+        }
+        return;
+      }
+
+      // slow release → nearest snap
+      const snaps = [TY_HIGH, TY_MID, TY_LOW];
+      let best = snaps[0];
+      let bestD = Math.abs(cur - snaps[0]);
+      for (const s of snaps) {
+        const d = Math.abs(cur - s);
+        if (d < bestD) { bestD = d; best = s; }
+      }
+      snapTo(best);
+      if (best === TY_LOW) runOnJS(dismissKB)();
+    });
+
+  /* ── Animated styles ── */
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  // expanded content fades in as sheet rises above collapsed
+  const expandedOpacity = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      translateY.value,
+      [TY_MID, TY_LOW],
+      [1, 0],
+      Extrapolation.CLAMP,
+    ),
+    // pointer events are handled in JSX via the wrapper
+  }));
+
+  /* ── Render ── */
   return (
-    <View style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* ── OpenStreetMap (no API key) ── */}
-      <MapView style={StyleSheet.absoluteFillObject} initialRegion={INITIAL_REGION}>
-        <UrlTile urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} />
-        {BUS_MARKERS.map((m) => (
-          <Marker key={m.id} coordinate={{ latitude: m.latitude, longitude: m.longitude }} title={m.title}>
-            <BusMarkerView />
-          </Marker>
-        ))}
-      </MapView>
-
-      {/* dark overlay for readability */}
+      {/* Map */}
+      <WebView
+        source={{ html: LEAFLET_HTML }}
+        style={StyleSheet.absoluteFillObject}
+        scrollEnabled={false}
+        overScrollMode="never"
+        javaScriptEnabled
+        domStorageEnabled
+        startInLoadingState
+        renderLoading={() => <View style={styles.mapLoading} />}
+      />
       <View style={styles.mapOverlay} pointerEvents="none" />
 
-      {/* ── Menu Button ── */}
+      {/* Menu */}
       <MenuButton top={insets.top} onPress={() => console.log('Open menu')} />
 
       {/* ── Bottom Sheet ── */}
-      <KeyboardAvoidingView
-        style={[styles.sheetContainer, { height: SHEET_HEIGHT + insets.bottom }]}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
-      >
-        <View style={styles.sheet}>
-          {/* drag handle */}
-          <View style={styles.handleWrap}>
+      <GestureDetector gesture={pan}>
+        <Animated.View style={[styles.sheetOuter, sheetStyle]}>
+          {/* Handle */}
+          <View style={styles.handleArea}>
             <View style={styles.handle} />
           </View>
 
-          <ScrollView
-            style={styles.sheetScroll}
-            contentContainerStyle={[styles.sheetContent, { paddingBottom: insets.bottom + 16 }]}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            {/* ── Search Input ── */}
-            <View style={[styles.searchRow, searchFocused && styles.searchRowFocused]}>
-              <MaterialCommunityIcons name="magnify" size={20} color={TEXT_SECONDARY} style={{ marginRight: 10 }} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Enter your location"
-                placeholderTextColor="rgba(255,255,255,0.35)"
-                value={searchText}
-                onChangeText={setSearchText}
-                onFocus={() => setSearchFocused(true)}
-                onBlur={() => setSearchFocused(false)}
-                selectionColor={ACCENT}
-              />
-            </View>
-
-            {/* ── Where to? + Quick Actions ── */}
-            <View style={styles.whereRow}>
-              <Pressable
-                style={({ pressed }) => [styles.whereBtn, pressed && { opacity: 0.85 }]}
-                onPress={() => console.log('Where to?')}
-              >
-                <MaterialCommunityIcons name="map-marker" size={18} color={ACCENT} style={{ marginRight: 8 }} />
-                <Text style={styles.whereText}>Where to?</Text>
-              </Pressable>
-
-              <View style={styles.quickActions}>
-                <QuickActionButton
-                  icon="home-outline"
-                  label="Home"
-                  active={activeQuick === 'home'}
-                  onPress={() => setActiveQuick(activeQuick === 'home' ? null : 'home')}
-                />
-                <QuickActionButton
-                  icon="briefcase-outline"
-                  label="Work"
-                  active={activeQuick === 'work'}
-                  onPress={() => setActiveQuick(activeQuick === 'work' ? null : 'work')}
+          {/* Always‑visible search */}
+          <View style={styles.searchWrap}>
+            <Pressable onPress={expandToMid}>
+              <View style={[styles.searchRow, searchFocused && styles.searchRowFocused]}>
+                <MaterialCommunityIcons name="magnify" size={20} color={TEXT_SECONDARY} style={{ marginRight: 10 }} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Enter your location"
+                  placeholderTextColor="rgba(255,255,255,0.35)"
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  onFocus={() => { setSearchFocused(true); expandToMid(); }}
+                  onBlur={() => setSearchFocused(false)}
+                  selectionColor={ACCENT}
                 />
               </View>
-            </View>
+            </Pressable>
+          </View>
 
-            {/* ── Section heading ── */}
-            <Text style={styles.sectionHeading}>Recent</Text>
+          {/* Expanded content — fades in */}
+          <Animated.View style={[styles.expandedWrap, expandedOpacity]}>
+            <ScrollView
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 32 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
+              {/* Where to? + Quick Actions */}
+              <View style={styles.whereRow}>
+                <View style={styles.whereBtn}>
+                  <MaterialCommunityIcons name="map-marker" size={18} color={ACCENT} style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.whereInput}
+                    placeholder="Where to?"
+                    placeholderTextColor={TEXT_SECONDARY}
+                    value={destination}
+                    onChangeText={setDestination}
+                    selectionColor={ACCENT}
+                  />
+                </View>
+                <View style={styles.quickActions}>
+                  <QuickActionButton
+                    icon="home-outline"
+                    active={activeQuick === 'home'}
+                    onPress={() => setActiveQuick(activeQuick === 'home' ? null : 'home')}
+                  />
+                  <QuickActionButton
+                    icon="briefcase-outline"
+                    active={activeQuick === 'work'}
+                    onPress={() => setActiveQuick(activeQuick === 'work' ? null : 'work')}
+                  />
+                </View>
+              </View>
 
-            {/* ── Recent / saved list ── */}
-            {RECENT_PLACES.map((item, idx) => (
-              <PlaceRow key={item.id} item={item} isLast={idx === RECENT_PLACES.length - 1} />
-            ))}
-          </ScrollView>
-        </View>
-      </KeyboardAvoidingView>
-    </View>
+              {/* Recent */}
+              <Text style={styles.sectionHeading}>Recent</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.placesScroll}
+                decelerationRate="fast"
+                snapToInterval={232}
+              >
+                {RECENT_PLACES.map((item) => (
+                  <PlaceCard key={item.id} item={item} />
+                ))}
+              </ScrollView>
+
+              {/* Find Bus */}
+              <Pressable
+                style={[styles.findButton, isButtonActive && styles.findButtonActive]}
+                onPress={() => console.log('Find bus', { from: searchText, to: destination })}
+                disabled={!isButtonActive}
+              >
+                <Text style={[styles.findButtonText, isButtonActive && styles.findButtonTextActive]}>
+                  Find Bus
+                </Text>
+              </Pressable>
+            </ScrollView>
+          </Animated.View>
+        </Animated.View>
+      </GestureDetector>
+    </GestureHandlerRootView>
   );
 }
 
 /* ───────────── styles ───────────── */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: BG,
-  },
+  container: { flex: 1, backgroundColor: BG },
 
-  /* map overlay */
-  mapOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-  },
+  mapOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' },
+  mapLoading: { ...StyleSheet.absoluteFillObject, backgroundColor: '#1a1a1c' },
 
-  /* bottom sheet */
-  sheetContainer: {
+  /* The sheet is a full-height view that we translate downward.
+     translateY pushes it off screen; lower value => more visible. */
+  sheetOuter: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  sheet: {
-    flex: 1,
+    top: 0, left: 0, right: 0,
+    height: SCREEN_H,
     backgroundColor: SHEET_BG,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     overflow: 'hidden',
   },
-  handleWrap: {
+
+  handleArea: {
     alignItems: 'center',
-    paddingTop: 10,
-    paddingBottom: 6,
+    justifyContent: 'center',
+    paddingTop: 12,
+    paddingBottom: 8,
   },
   handle: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  sheetScroll: {
-    flex: 1,
-  },
-  sheetContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    width: 40, height: 5, borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
 
-  /* search */
+  searchWrap: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 4 },
+
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: SURFACE,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-    paddingHorizontal: 14,
-    height: 50,
-    marginBottom: 16,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SURFACE, borderRadius: 14,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)',
+    paddingHorizontal: 14, height: 50,
   },
-  searchRowFocused: {
-    borderColor: ACCENT,
-  },
-  searchInput: {
-    flex: 1,
-    color: TEXT_PRIMARY,
-    fontSize: 15,
-    padding: 0,
-  },
+  searchRowFocused: { borderColor: ACCENT },
+  searchInput: { flex: 1, color: TEXT_PRIMARY, fontSize: 15, padding: 0 },
 
-  /* where to row */
-  whereRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    gap: 10,
-  },
+  expandedWrap: { flex: 1, marginTop: 12 },
+
+  whereRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 10 },
   whereBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: SURFACE,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
-    paddingHorizontal: 14,
-    height: 48,
+    flex: 1, maxWidth: '90%', flexDirection: 'row', alignItems: 'center',
+    backgroundColor: SURFACE, borderRadius: 14,
+    borderWidth: 1, borderColor: BORDER,
+    paddingHorizontal: 14, height: 48,
   },
-  whereText: {
-    color: TEXT_SECONDARY,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  quickActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
+  whereInput: { flex: 1, color: TEXT_PRIMARY, fontSize: 15, padding: 0 },
+  quickActions: { flexDirection: 'row', gap: 8 },
 
-  /* section */
   sectionHeading: {
-    color: TEXT_SECONDARY,
-    fontSize: 13,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
+    color: TEXT_SECONDARY, fontSize: 13, fontWeight: '600',
+    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12,
   },
+  placesScroll: { paddingRight: 20 },
+
+  findButton: {
+    width: '100%', height: 52, borderRadius: 16,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center', marginTop: 20,
+  },
+  findButtonActive: { backgroundColor: ACCENT, borderColor: ACCENT },
+  findButtonText: { color: TEXT_SECONDARY, fontSize: 16, fontWeight: '600' },
+  findButtonTextActive: { color: BG },
 });

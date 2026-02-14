@@ -1,4 +1,5 @@
 import * as storage from '@/utils/storage';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { Href, router } from 'expo-router';
@@ -16,42 +17,57 @@ import {
   ViewToken,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle } from 'react-native-svg';
+
+// Create animated SVG Circle
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 // Theme colors
 const BLACK = '#000000';
-const CARD_BG = '#0E0E10';
-const CIRCLE_BG = '#141416';
-const ACCENT = '#c1ec72';
-const INACTIVE_DOT = '#444444';
-const MUTED_TEXT = 'rgba(255, 255, 255, 0.65)';
+const WHITE = '#FFFFFF';
+const CARD_BG = '#FFFFFF';
+const CIRCLE_BG = '#F5F5F5';
+const ACCENT = '#c1ec72'; // Button accent (green on black background)
+const CARD_ACCENT = '#000000'; // Dots and progress circle accent (black on white)
+const INACTIVE_DOT = '#E0E0E0';
+const TEXT_COLOR = '#000000';
+const MUTED_TEXT = 'rgba(0, 0, 0, 0.6)';
 const SKIP_TEXT = 'rgba(255, 255, 255, 0.7)';
 
 // Responsive dimensions
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.9, 420);
-const CIRCLE_SIZE = Math.min(SCREEN_WIDTH * 0.65, 280);
+const CIRCLE_SIZE = Math.min(SCREEN_WIDTH * 0.55, 220);
 
 // Onboarding data
 const ONBOARDING_DATA = [
   {
     key: '1',
     title: 'Track buses in\nreal time',
-    subtitle:
-      'See live bus locations, arrival estimates, and routes moving toward your destination so you can plan with confidence.',
+    bullets: [
+      { icon: 'map-marker-radius', text: 'Real-time bus locations' },
+      { icon: 'clock-outline', text: 'Live arrival estimates' },
+    ],
     image: require('@/assets/images/onboarding11.png'),
   },
   {
     key: '2',
     title: 'Find the right bus\nfaster',
-    subtitle:
-      'Discover buses going your way, compare nearby routes, and choose the best option based on direction and arrival time.',
+    bullets: [
+      { icon: 'routes', text: 'Browse all available routes' },
+      { icon: 'compare', text: 'Compare nearby options' },
+      { icon: 'transit-connection-variant', text: 'Multi-journey planning' },
+    ],
     image: require('@/assets/images/onboarding11.png'),
   },
   {
     key: '3',
     title: 'Travel smarter\nevery day',
-    subtitle:
-      'Reduce waiting time, avoid uncertainty, and make better commuting decisions with live updates and smart journey insights.',
+    bullets: [
+      { icon: 'timer-sand', text: 'Reduce waiting time' },
+      { icon: 'lightning-bolt', text: 'Optimize your commute' },
+      { icon: 'brain', text: 'Smart travel decisions' },
+    ],
     image: require('@/assets/images/onboarding11.png'),
   },
 ];
@@ -79,7 +95,7 @@ function AnimatedDot({ active }: { active: boolean }) {
 
   const bgColor = colorAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [INACTIVE_DOT, ACCENT],
+    outputRange: [INACTIVE_DOT, CARD_ACCENT],
   });
 
   return (
@@ -100,6 +116,30 @@ function PaginationDots({ currentIndex }: { currentIndex: number }) {
     <View style={styles.dotsContainer}>
       {ONBOARDING_DATA.map((_, index) => (
         <AnimatedDot key={index} active={index === currentIndex} />
+      ))}
+    </View>
+  );
+}
+
+// ─── Bullet List Component ──────────────────────────────────
+interface BulletItem {
+  icon: string;
+  text: string;
+}
+
+function BulletList({ items }: { items: BulletItem[] }) {
+  return (
+    <View style={styles.bulletList}>
+      {items.map((item, index) => (
+        <View key={index} style={styles.bulletItem}>
+          <MaterialCommunityIcons
+            name={item.icon as any}
+            size={20}
+            color={BLACK}
+            style={styles.bulletIcon}
+          />
+          <Text style={styles.bulletText}>{item.text}</Text>
+        </View>
       ))}
     </View>
   );
@@ -147,26 +187,85 @@ function SlideItem({ item, index, currentIndex, scrollX }: SlideItemProps) {
     extrapolate: 'clamp',
   });
 
+  // Circular progress: animate based on overall progress through all slides
+  const totalSlides = ONBOARDING_DATA.length;
+  const progressInputRange = ONBOARDING_DATA.map((_, i) => i * CARD_WIDTH);
+  const progressOutputRange = ONBOARDING_DATA.map((_, i) => (i + 1) / totalSlides);
+
+  const progress = scrollX.interpolate({
+    inputRange: progressInputRange,
+    outputRange: progressOutputRange,
+    extrapolate: 'clamp',
+  });
+
+  // SVG circle parameters
+  const radius = CIRCLE_SIZE / 2 + 8; // Slightly larger than the image circle
+  const strokeWidth = 4;
+  const circumference = 2 * Math.PI * radius;
+  
+  // Animate strokeDashoffset based on progress
+  const strokeDashoffset = Animated.multiply(
+    progress,
+    circumference
+  ).interpolate({
+    inputRange: [0, circumference],
+    outputRange: [circumference, 0],
+  });
+
   return (
     <View style={[styles.slideContainer, { width: CARD_WIDTH }]}>
-      {/* Illustration Circle with parallax */}
-      <Animated.View
-        style={[
-          styles.circleContainer,
-          {
-            transform: [
-              { translateX: imageTranslateX },
-              { scale: imageScale },
-            ],
-          },
-        ]}
-      >
-        <Image
-          source={item.image}
-          style={styles.illustration}
-          contentFit="contain"
-        />
-      </Animated.View>
+      {/* Illustration Circle with parallax and progress indicator */}
+      <View style={styles.circleWrapper}>
+        {/* SVG Progress Circle */}
+        <Svg
+          width={CIRCLE_SIZE + 24}
+          height={CIRCLE_SIZE + 24}
+          style={styles.progressCircle}
+        >
+          {/* Background circle (optional - shows the track) */}
+          <Circle
+            cx={(CIRCLE_SIZE + 24) / 2}
+            cy={(CIRCLE_SIZE + 24) / 2}
+            r={radius}
+            stroke="rgba(0, 0, 0, 0.1)"
+            strokeWidth={strokeWidth}
+            fill="none"
+          />
+          {/* Progress circle */}
+          <AnimatedCircle
+            cx={(CIRCLE_SIZE + 24) / 2}
+            cy={(CIRCLE_SIZE + 24) / 2}
+            r={radius}
+            stroke={CARD_ACCENT}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            rotation="-90"
+            origin={`${(CIRCLE_SIZE + 24) / 2}, ${(CIRCLE_SIZE + 24) / 2}`}
+          />
+        </Svg>
+        
+        {/* Image Circle */}
+        <Animated.View
+          style={[
+            styles.circleContainer,
+            {
+              transform: [
+                { translateX: imageTranslateX },
+                { scale: imageScale },
+              ],
+            },
+          ]}
+        >
+          <Image
+            source={item.image}
+            style={styles.illustration}
+            contentFit="contain"
+          />
+        </Animated.View>
+      </View>
 
       {/* Pagination Dots */}
       <PaginationDots currentIndex={currentIndex} />
@@ -182,7 +281,7 @@ function SlideItem({ item, index, currentIndex, scrollX }: SlideItemProps) {
         ]}
       >
         <Text style={styles.title}>{item.title}</Text>
-        <Text style={styles.subtitle}>{item.subtitle}</Text>
+        <BulletList items={item.bullets} />
       </Animated.View>
     </View>
   );
@@ -422,6 +521,12 @@ export default function OnboardingScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <StatusBar style="light" backgroundColor={BLACK} />
       <View style={styles.container}>
+        {/* Logo positioned on top of card */}
+        <Image
+          source={require('@/assets/images/iconAle.svg')}
+          style={styles.cardLogo}
+          contentFit="contain"
+        />
         <Animated.View
           style={[
             styles.cardWrapper,
@@ -481,33 +586,51 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  cardLogo: {
+    width: 100,
+    height: 100,
+    position: 'absolute',
+    top: 16,
+   
+    zIndex: 10,
+  },
   cardWrapper: {
     flex: 1,
     width: CARD_WIDTH,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 120,
   },
   card: {
     width: CARD_WIDTH,
-    height: '85%',
+    flex: 1,
     backgroundColor: CARD_BG,
     borderRadius: 30,
     overflow: 'hidden',
     // iOS shadow
     shadowColor: BLACK,
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
     // Android elevation
-    elevation: 12,
+    elevation: 6,
   },
   slideContainer: {
     flex: 1,
-    paddingTop: 40,
+    paddingTop: 20,
     paddingBottom: 32,
     paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'space-evenly',
+  },
+  circleWrapper: {
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  progressCircle: {
+    position: 'absolute',
   },
   circleContainer: {
     width: CIRCLE_SIZE,
@@ -516,7 +639,6 @@ const styles = StyleSheet.create({
     backgroundColor: CIRCLE_BG,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
     // iOS shadow for 3D effect
     shadowColor: '#000000',
     shadowOpacity: 0.3,
@@ -549,20 +671,38 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: TEXT_COLOR,
     textAlign: 'center',
     lineHeight: 36,
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  subtitle: {
-    fontSize: 16,
-    color: MUTED_TEXT,
+  bulletList: {
+    gap: 12,
+    alignItems: 'center',
+  },
+  bulletItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  bulletIcon: {
+    marginRight: 0,
+    marginTop: 0,
+    flexShrink: 0,
+  },
+  bulletText: {
+    fontSize: 14,
+    color: TEXT_COLOR,
+    fontWeight: '500',
+    lineHeight: 20,
+    flexWrap: 'wrap',
     textAlign: 'center',
-    lineHeight: 24,
+    maxWidth: 200,
   },
   bottomControlsContainer: {
     width: '100%',
     paddingHorizontal: 32,
+    paddingTop: 32,
     paddingBottom: 16,
   },
   controlsRow: {

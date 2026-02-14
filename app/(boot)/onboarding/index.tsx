@@ -25,19 +25,41 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 // Theme colors
 const BLACK = '#000000';
 const WHITE = '#FFFFFF';
-const CARD_BG = '#FFFFFF';
-const CIRCLE_BG = '#F5F5F5';
-const ACCENT = '#c1ec72'; // Button accent (green on black background)
-const CARD_ACCENT = '#000000'; // Dots and progress circle accent (black on white)
+const ACCENT = '#c1ec72';
 const INACTIVE_DOT = '#E0E0E0';
-const TEXT_COLOR = '#000000';
-const MUTED_TEXT = 'rgba(0, 0, 0, 0.6)';
 const SKIP_TEXT = 'rgba(255, 255, 255, 0.7)';
 
 // Responsive dimensions
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH * 0.9, 420);
 const CIRCLE_SIZE = Math.min(SCREEN_WIDTH * 0.55, 220);
+const ILLUSTRATION_SIZE = CIRCLE_SIZE * 0.85;
+
+// Spacing scale
+const SPACING = { xs: 6, sm: 8, md: 16, lg: 24, xl: 32 };
+
+// Reusable shadow styles
+const SHADOW_LIGHT = {
+  shadowColor: BLACK,
+  shadowOpacity: 0.15,
+  shadowRadius: 12,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 6,
+};
+const SHADOW_MEDIUM = {
+  shadowColor: BLACK,
+  shadowOpacity: 0.25,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 6 },
+  elevation: 8,
+};
+const SHADOW_HEAVY = {
+  shadowColor: BLACK,
+  shadowOpacity: 0.3,
+  shadowRadius: 16,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 10,
+};
 
 // Onboarding data
 const ONBOARDING_DATA = [
@@ -95,7 +117,7 @@ function AnimatedDot({ active }: { active: boolean }) {
 
   const bgColor = colorAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [INACTIVE_DOT, CARD_ACCENT],
+    outputRange: [INACTIVE_DOT, BLACK],
   });
 
   return (

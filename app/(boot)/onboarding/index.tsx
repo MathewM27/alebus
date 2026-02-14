@@ -506,7 +506,7 @@ export default function OnboardingScreen() {
     } catch (error) {
       console.error('Error saving onboarding state:', error);
     }
-    router.replace('/(boot)/register' as Href);
+    router.replace('/(auth)/welcome' as Href);
   }, []);
 
   const handleSkip = useCallback(() => {

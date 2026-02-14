@@ -17,7 +17,7 @@ export default function Index() {
       
       // Don't redirect if user is already deep-linked into a route group.
       const inGroup = segments[0] as string;
-      const validGroups = ['(boot)', '(tabs)', '(modals)'];
+      const validGroups = ['(boot)', '(tabs)', '(modals)', '(auth)'];
       if (validGroups.includes(inGroup)) {
         setBootReady();
         return;
@@ -32,7 +32,7 @@ export default function Index() {
       if (!hasCompletedOnboarding) {
         router.replace('/(boot)/onboarding' as Href);
       } else if (!userId) {
-        router.replace('/(boot)/register' as Href);
+        router.replace('/(auth)/welcome' as Href);
       } else {
         router.replace('/(tabs)' as Href);
       }

@@ -65,7 +65,7 @@ const SHADOW_HEAVY = {
 const ONBOARDING_DATA = [
   {
     key: '1',
-    title: 'Track buses in\nreal time',
+    title: 'Track Buses in Real-Time',
     bullets: [
       { icon: 'map-marker-radius', text: 'Real-time bus locations' },
       { icon: 'clock-outline', text: 'Live arrival estimates' },
@@ -76,9 +76,9 @@ const ONBOARDING_DATA = [
     key: '2',
     title: 'Find the right bus\nfaster',
     bullets: [
-      { icon: 'routes', text: 'Browse all available routes' },
-      { icon: 'compare', text: 'Compare nearby options' },
-      { icon: 'transit-connection-variant', text: 'Multi-journey planning' },
+      { icon: 'routes', text: 'Input your destination' },
+      { icon: 'compare', text: 'Get matched with right bus' },
+      { icon: 'transit-connection-variant', text: 'Multi-journey plan available' },
     ],
     image: require('@/assets/images/onboarding11.png'),
   },
@@ -158,7 +158,6 @@ function BulletList({ items }: { items: BulletItem[] }) {
             name={item.icon as any}
             size={20}
             color={BLACK}
-            style={styles.bulletIcon}
           />
           <Text style={styles.bulletText}>{item.text}</Text>
         </View>
@@ -258,7 +257,7 @@ function SlideItem({ item, index, currentIndex, scrollX }: SlideItemProps) {
             cx={(CIRCLE_SIZE + 24) / 2}
             cy={(CIRCLE_SIZE + 24) / 2}
             r={radius}
-            stroke={CARD_ACCENT}
+            stroke={BLACK}
             strokeWidth={strokeWidth}
             fill="none"
             strokeDasharray={circumference}
@@ -604,7 +603,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: BLACK,
     justifyContent: 'space-between',
     alignItems: 'center',
   },
@@ -612,8 +610,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     position: 'absolute',
-    top: 16,
-   
+    top: SPACING.md,
     zIndex: 10,
   },
   cardWrapper: {
@@ -626,30 +623,22 @@ const styles = StyleSheet.create({
   card: {
     width: CARD_WIDTH,
     flex: 1,
-    backgroundColor: CARD_BG,
+    backgroundColor: WHITE,
     borderRadius: 30,
     overflow: 'hidden',
-    // iOS shadow
-    shadowColor: BLACK,
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    // Android elevation
-    elevation: 6,
+    ...SHADOW_LIGHT,
   },
   slideContainer: {
     flex: 1,
+    padding: SPACING.lg,
     paddingTop: 20,
-    paddingBottom: 32,
-    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'space-evenly',
   },
   circleWrapper: {
-    position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: SPACING.lg,
   },
   progressCircle: {
     position: 'absolute',
@@ -658,42 +647,34 @@ const styles = StyleSheet.create({
     width: CIRCLE_SIZE,
     height: CIRCLE_SIZE,
     borderRadius: CIRCLE_SIZE / 2,
-    backgroundColor: CIRCLE_BG,
+    backgroundColor: '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
-    // iOS shadow for 3D effect
-    shadowColor: '#000000',
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    // Android elevation for 3D effect
-    elevation: 10,
+    ...SHADOW_HEAVY,
   },
   illustration: {
-    width: CIRCLE_SIZE * 0.85,
-    height: CIRCLE_SIZE * 0.85,
-    borderRadius: (CIRCLE_SIZE * 0.85) / 2,
-    overflow: 'hidden',
+    width: ILLUSTRATION_SIZE,
+    height: ILLUSTRATION_SIZE,
+    borderRadius: ILLUSTRATION_SIZE / 2,
   },
   dotsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 24,
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
   dot: {
-    height: 8,
+    height: SPACING.sm,
     borderRadius: 4,
   },
   textContainer: {
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: SPACING.md,
   },
   title: {
     fontSize: 28,
     fontWeight: '600',
-    color: TEXT_COLOR,
+    color: BLACK,
     textAlign: 'center',
     lineHeight: 36,
     marginBottom: 20,
@@ -705,37 +686,30 @@ const styles = StyleSheet.create({
   bulletItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  bulletIcon: {
-    marginRight: 0,
-    marginTop: 0,
-    flexShrink: 0,
+    gap: SPACING.xs,
   },
   bulletText: {
     fontSize: 14,
-    color: TEXT_COLOR,
+    color: BLACK,
     fontWeight: '500',
     lineHeight: 20,
-    flexWrap: 'wrap',
     textAlign: 'center',
     maxWidth: 200,
   },
   bottomControlsContainer: {
     width: '100%',
-    paddingHorizontal: 32,
-    paddingTop: 32,
-    paddingBottom: 16,
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.md,
   },
   controlsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    width: '100%',
   },
   skipButton: {
     paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: SPACING.sm,
   },
   skipText: {
     fontSize: 14,
@@ -745,18 +719,12 @@ const styles = StyleSheet.create({
   },
   pillButton: {
     height: 50,
-    paddingHorizontal: 32,
+    paddingHorizontal: SPACING.xl,
     backgroundColor: ACCENT,
     borderRadius: 999,
     justifyContent: 'center',
     alignItems: 'center',
-    // iOS shadow
-    shadowColor: BLACK,
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    // Android elevation
-    elevation: 8,
+    ...SHADOW_MEDIUM,
   },
   pillButtonText: {
     fontSize: 14,
@@ -766,7 +734,6 @@ const styles = StyleSheet.create({
   },
   startButtonContainer: {
     alignItems: 'center',
-    width: '100%',
   },
   startButton: {
     width: '100%',

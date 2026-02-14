@@ -3,10 +3,11 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { Href, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
+  Easing,
   FlatList,
   Pressable,
   StyleSheet,
@@ -35,73 +36,159 @@ const ONBOARDING_DATA = [
   {
     key: '1',
     title: 'Track buses in\nreal time',
-    subtitle: 'See live bus locations, arrival estimates, and routes moving toward your destination so you can plan with confidence.',
+    subtitle:
+      'See live bus locations, arrival estimates, and routes moving toward your destination so you can plan with confidence.',
     image: require('@/assets/images/onboarding11.png'),
   },
   {
     key: '2',
     title: 'Find the right bus\nfaster',
-    subtitle: 'Discover buses going your way, compare nearby routes, and choose the best option based on direction and arrival time.',
+    subtitle:
+      'Discover buses going your way, compare nearby routes, and choose the best option based on direction and arrival time.',
     image: require('@/assets/images/onboarding11.png'),
   },
   {
     key: '3',
     title: 'Travel smarter\nevery day',
-    subtitle: 'Reduce waiting time, avoid uncertainty, and make better commuting decisions with live updates and smart journey insights.',
+    subtitle:
+      'Reduce waiting time, avoid uncertainty, and make better commuting decisions with live updates and smart journey insights.',
     image: require('@/assets/images/onboarding11.png'),
   },
 ];
 
-// Pagination Dots Component
+// ─── Animated Pagination Dots ───────────────────────────────
+function AnimatedDot({ active }: { active: boolean }) {
+  const widthAnim = useRef(new Animated.Value(active ? 24 : 8)).current;
+  const colorAnim = useRef(new Animated.Value(active ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(widthAnim, {
+        toValue: active ? 24 : 8,
+        friction: 8,
+        tension: 60,
+        useNativeDriver: false,
+      }),
+      Animated.timing(colorAnim, {
+        toValue: active ? 1 : 0,
+        duration: 300,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [active]);
+
+  const bgColor = colorAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [INACTIVE_DOT, ACCENT],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.dot,
+        {
+          width: widthAnim,
+          backgroundColor: bgColor,
+        },
+      ]}
+    />
+  );
+}
+
 function PaginationDots({ currentIndex }: { currentIndex: number }) {
   return (
     <View style={styles.dotsContainer}>
       {ONBOARDING_DATA.map((_, index) => (
-        <View
-          key={index}
-          style={[
-            styles.dot,
-            {
-              backgroundColor: index === currentIndex ? ACCENT : INACTIVE_DOT,
-            },
-          ]}
-        />
+        <AnimatedDot key={index} active={index === currentIndex} />
       ))}
     </View>
   );
 }
 
-// Slide Item Component
+// ─── Slide Item (with scroll-driven parallax) ──────────────
 interface SlideItemProps {
   item: (typeof ONBOARDING_DATA)[0];
+  index: number;
   currentIndex: number;
+  scrollX: Animated.Value;
 }
 
-function SlideItem({ item, currentIndex }: SlideItemProps) {
+function SlideItem({ item, index, currentIndex, scrollX }: SlideItemProps) {
+  const inputRange = [
+    (index - 1) * CARD_WIDTH,
+    index * CARD_WIDTH,
+    (index + 1) * CARD_WIDTH,
+  ];
+
+  // Parallax: image moves slower than scroll for depth
+  const imageTranslateX = scrollX.interpolate({
+    inputRange,
+    outputRange: [40, 0, -40],
+    extrapolate: 'clamp',
+  });
+
+  // Scale: slight scale down when off-center
+  const imageScale = scrollX.interpolate({
+    inputRange,
+    outputRange: [0.85, 1, 0.85],
+    extrapolate: 'clamp',
+  });
+
+  // Text slides in from opposite direction for a reveal feel
+  const textTranslateY = scrollX.interpolate({
+    inputRange,
+    outputRange: [30, 0, 30],
+    extrapolate: 'clamp',
+  });
+
+  const textOpacity = scrollX.interpolate({
+    inputRange,
+    outputRange: [0, 1, 0],
+    extrapolate: 'clamp',
+  });
+
   return (
     <View style={[styles.slideContainer, { width: CARD_WIDTH }]}>
-      {/* Illustration Circle */}
-      <View style={styles.circleContainer}>
+      {/* Illustration Circle with parallax */}
+      <Animated.View
+        style={[
+          styles.circleContainer,
+          {
+            transform: [
+              { translateX: imageTranslateX },
+              { scale: imageScale },
+            ],
+          },
+        ]}
+      >
         <Image
           source={item.image}
           style={styles.illustration}
           contentFit="contain"
         />
-      </View>
+      </Animated.View>
 
       {/* Pagination Dots */}
       <PaginationDots currentIndex={currentIndex} />
 
-      {/* Text Content */}
-      <View style={styles.textContainer}>
+      {/* Text Content with fade/slide */}
+      <Animated.View
+        style={[
+          styles.textContainer,
+          {
+            opacity: textOpacity,
+            transform: [{ translateY: textTranslateY }],
+          },
+        ]}
+      >
         <Text style={styles.title}>{item.title}</Text>
         <Text style={styles.subtitle}>{item.subtitle}</Text>
-      </View>
+      </Animated.View>
     </View>
   );
 }
 
-// Bottom Controls Component
+// ─── Bottom Controls (animated transitions) ────────────────
 interface BottomControlsProps {
   currentIndex: number;
   onNext: () => void;
@@ -109,9 +196,24 @@ interface BottomControlsProps {
   onStart: () => void;
 }
 
-function BottomControls({ currentIndex, onNext, onSkip, onStart }: BottomControlsProps) {
+function BottomControls({
+  currentIndex,
+  onNext,
+  onSkip,
+  onStart,
+}: BottomControlsProps) {
   const isLastSlide = currentIndex === ONBOARDING_DATA.length - 1;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const transitionAnim = useRef(new Animated.Value(isLastSlide ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(transitionAnim, {
+      toValue: isLastSlide ? 1 : 0,
+      duration: 300,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [isLastSlide]);
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {
@@ -133,43 +235,79 @@ function BottomControls({ currentIndex, onNext, onSkip, onStart }: BottomControl
     action();
   };
 
+  // Crossfade: SKIP/NEXT fades out, START fades in
+  const rowOpacity = transitionAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0],
+  });
+  const startOpacity = transitionAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const startTranslateY = transitionAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [14, 0],
+  });
+
   return (
     <View style={styles.bottomControlsContainer}>
-      {!isLastSlide ? (
-        <View style={styles.controlsRow}>
-          <Pressable
-            onPress={() => handleButtonPress(onSkip)}
-            style={styles.skipButton}
-            accessibilityRole="button"
-            accessibilityLabel="Skip onboarding"
+      {/* SKIP / NEXT row */}
+      <Animated.View
+        style={[
+          styles.controlsRow,
+          {
+            opacity: rowOpacity,
+            position: isLastSlide ? 'absolute' : 'relative',
+            // keep it in layout flow but invisible on last slide
+          },
+        ]}
+        pointerEvents={isLastSlide ? 'none' : 'auto'}
+      >
+        <Pressable
+          onPress={() => handleButtonPress(onSkip)}
+          style={styles.skipButton}
+          accessibilityRole="button"
+          accessibilityLabel="Skip onboarding"
+        >
+          <Text style={styles.skipText}>SKIP</Text>
+        </Pressable>
+        <Pressable
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          onPress={() => handleButtonPress(onNext)}
+          accessibilityRole="button"
+          accessibilityLabel="Next slide"
+        >
+          <Animated.View
+            style={[
+              styles.pillButton,
+              { transform: [{ scale: scaleAnim }] },
+            ]}
           >
-            <Text style={styles.skipText}>SKIP</Text>
-          </Pressable>
-          <Pressable
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            onPress={() => handleButtonPress(onNext)}
-            accessibilityRole="button"
-            accessibilityLabel="Next slide"
-          >
-            <Animated.View
-              style={[
-                styles.pillButton,
-                { transform: [{ scale: scaleAnim }] },
-              ]}
-            >
-              <Text style={styles.pillButtonText}>NEXT</Text>
-            </Animated.View>
-          </Pressable>
-        </View>
-      ) : (
+            <Text style={styles.pillButtonText}>NEXT</Text>
+          </Animated.View>
+        </Pressable>
+      </Animated.View>
+
+      {/* START button */}
+      <Animated.View
+        style={[
+          styles.startButtonContainer,
+          {
+            opacity: startOpacity,
+            transform: [{ translateY: startTranslateY }],
+            position: isLastSlide ? 'relative' : 'absolute',
+          },
+        ]}
+        pointerEvents={isLastSlide ? 'auto' : 'none'}
+      >
         <Pressable
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
           onPress={() => handleButtonPress(onStart)}
-          style={styles.startButtonContainer}
           accessibilityRole="button"
           accessibilityLabel="Start using the app"
+          style={{ width: '100%' }}
         >
           <Animated.View
             style={[
@@ -181,22 +319,50 @@ function BottomControls({ currentIndex, onNext, onSkip, onStart }: BottomControl
             <Text style={styles.pillButtonText}>START</Text>
           </Animated.View>
         </Pressable>
-      )}
+      </Animated.View>
     </View>
   );
 }
 
+// ─── Main Screen ────────────────────────────────────────────
 export default function OnboardingScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+
+  // Mount entrance animation
+  const cardScale = useRef(new Animated.Value(0.92)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(cardScale, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity, {
+        toValue: 1,
+        duration: 600,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   const handleViewableItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
       if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-        setCurrentIndex(viewableItems[0].index);
+        const newIndex = viewableItems[0].index;
+        if (newIndex !== currentIndex) {
+          // Light haptic feedback on slide change
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setCurrentIndex(newIndex);
+        }
       }
     },
-    []
+    [currentIndex]
   );
 
   const viewabilityConfig = useRef({
@@ -205,6 +371,8 @@ export default function OnboardingScreen() {
 
   const handleNext = useCallback(() => {
     if (currentIndex < ONBOARDING_DATA.length - 1) {
+      // Subtle haptic on programmatic navigation
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       flatListRef.current?.scrollToIndex({
         index: currentIndex + 1,
         animated: true,
@@ -230,13 +398,15 @@ export default function OnboardingScreen() {
   }, [completeOnboarding]);
 
   const renderItem = useCallback(
-    ({ item }: { item: (typeof ONBOARDING_DATA)[0] }) => (
+    ({ item, index }: { item: (typeof ONBOARDING_DATA)[0]; index: number }) => (
       <SlideItem
         item={item}
+        index={index}
         currentIndex={currentIndex}
+        scrollX={scrollX}
       />
     ),
-    [currentIndex]
+    [currentIndex, scrollX]
   );
 
   const getItemLayout = useCallback(
@@ -252,9 +422,17 @@ export default function OnboardingScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <StatusBar style="light" backgroundColor={BLACK} />
       <View style={styles.container}>
-        <View style={styles.cardWrapper}>
+        <Animated.View
+          style={[
+            styles.cardWrapper,
+            {
+              opacity: cardOpacity,
+              transform: [{ scale: cardScale }],
+            },
+          ]}
+        >
           <View style={styles.card}>
-            <FlatList
+            <Animated.FlatList
               ref={flatListRef}
               data={ONBOARDING_DATA}
               renderItem={renderItem}
@@ -269,9 +447,18 @@ export default function OnboardingScreen() {
               snapToInterval={CARD_WIDTH}
               decelerationRate="fast"
               snapToAlignment="center"
+              onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                { useNativeDriver: true }
+              )}
+              scrollEventThrottle={16}
+              onScrollBeginDrag={() => {
+                // Very light haptic when user starts dragging
+                Haptics.selectionAsync();
+              }}
             />
           </View>
-        </View>
+        </Animated.View>
         <BottomControls
           currentIndex={currentIndex}
           onNext={handleNext}
@@ -352,7 +539,6 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   dot: {
-    width: 8,
     height: 8,
     borderRadius: 4,
   },

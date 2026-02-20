@@ -2,23 +2,24 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useState } from 'react';
 import {
-  Dimensions,
-  Keyboard,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    Dimensions,
+    Keyboard,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableWithoutFeedback,
+    View,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
-  Extrapolation,
-  interpolate,
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
+    Extrapolation,
+    interpolate,
+    runOnJS,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -36,7 +37,7 @@ const BORDER = 'rgba(255,255,255,0.12)';
 /* snap points – heights measured from the bottom of the screen */
 const SNAP_LOW = 140;
 const SNAP_MID = SCREEN_H * 0.50;
-const SNAP_HIGH = SCREEN_H * 0.55;
+const SNAP_HIGH = SCREEN_H * 0.70;
 
 /* translateY values that correspond to each snap height.
    translateY = SCREEN_H - snapHeight  (lower = taller sheet) */
@@ -56,7 +57,7 @@ const BUS_MARKERS = [
   { id: '6', lat: -20.1000, lng: 57.5700, title: 'Pamplemousses' },
 ];
 
-/* Leaflet map HTML — dark CartoDB tiles, no API key */
+/* Leaflet map HTML — OpenStreetMap tiles (Google Maps style: blue sea, white land, dark roads) */
 const LEAFLET_HTML = `
 <!DOCTYPE html>
 <html>
@@ -66,20 +67,21 @@ const LEAFLET_HTML = `
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
   <style>
     * { margin: 0; padding: 0; }
-    html, body, #map { width: 100%; height: 100%; background: #1a1a1c; }
+    html, body, #map { width: 100%; height: 100%; background: #aadaff; }
     .leaflet-control-attribution { display: none !important; }
     .leaflet-control-zoom { display: none !important; }
     .bus-marker {
-      width: 22px; height: 22px; border-radius: 50%;
+      width: 24px; height: 24px; border-radius: 50%;
       background: ${ACCENT}; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 0 8px rgba(193,236,114,0.4);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25), 0 0 0 2px rgba(255,255,255,0.8);
+      border: 2px solid #fff;
     }
     .bus-marker-inner { width: 8px; height: 8px; border-radius: 50%; background: #000; }
     .leaflet-popup-content-wrapper {
-      background: #151518; color: #fff; border-radius: 10px;
-      border: 1px solid rgba(255,255,255,0.12); box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      background: #ffffff; color: #333; border-radius: 10px;
+      border: 1px solid rgba(0,0,0,0.1); box-shadow: 0 4px 20px rgba(0,0,0,0.15);
     }
-    .leaflet-popup-tip { background: #151518; }
+    .leaflet-popup-tip { background: #ffffff; }
     .leaflet-popup-content { margin: 8px 12px; font-size: 13px; font-family: system-ui; }
   </style>
 </head>
@@ -92,15 +94,15 @@ const LEAFLET_HTML = `
       zoomControl: false,
       attributionControl: false
     });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19, subdomains: 'abcd'
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, subdomains: 'abc'
     }).addTo(map);
     var markers = ${JSON.stringify(BUS_MARKERS)};
     markers.forEach(function(m) {
       var icon = L.divIcon({
         className: '',
         html: '<div class="bus-marker"><div class="bus-marker-inner"></div></div>',
-        iconSize: [22, 22], iconAnchor: [11, 11]
+        iconSize: [24, 24], iconAnchor: [12, 12]
       });
       L.marker([m.lat, m.lng], { icon: icon }).addTo(map).bindPopup(m.title);
     });
@@ -201,8 +203,43 @@ export default function HomeScreen() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [activeQuick, setActiveQuick] = useState<string | null>(null);
   const [destination, setDestination] = useState('');
+  const [originError, setOriginError] = useState('');
+  const [destinationError, setDestinationError] = useState('');
 
   const isButtonActive = searchText.trim() !== '' && destination.trim() !== '';
+
+  const handleFindBus = () => {
+    // Show errors one by one: check origin first
+    if (searchText.trim() === '') {
+      setOriginError('Please enter your starting location');
+      setDestinationError(''); // Clear destination error
+      return;
+    }
+    
+    // If origin is filled, check destination next
+    if (destination.trim() === '') {
+      setOriginError(''); // Clear origin error
+      setDestinationError('Please enter your destination');
+      return;
+    }
+    
+    // Both filled, proceed
+    setOriginError('');
+    setDestinationError('');
+    console.log('Find bus', { from: searchText, to: destination });
+    // TODO: Navigate to results or perform search
+  };
+
+  // Clear errors when user starts typing
+  const handleOriginChange = (text: string) => {
+    setSearchText(text);
+    if (originError) setOriginError('');
+  };
+
+  const handleDestinationChange = (text: string) => {
+    setDestination(text);
+    if (destinationError) setDestinationError('');
+  };
 
   /* ── shared values ── */
   const translateY = useSharedValue(TY_LOW);   // start collapsed
@@ -223,6 +260,8 @@ export default function HomeScreen() {
 
   /* ── Pan gesture on the entire sheet ── */
   const pan = Gesture.Pan()
+    .activeOffsetY([-10, 10])  // only activate on vertical movement
+    .failOffsetX([-15, 15])     // fail gesture if horizontal movement exceeds threshold
     .onStart(() => {
       ctx.value = translateY.value;
     })
@@ -292,7 +331,9 @@ export default function HomeScreen() {
         startInLoadingState
         renderLoading={() => <View style={styles.mapLoading} />}
       />
-      <View style={styles.mapOverlay} pointerEvents="none" />
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.mapOverlay} />
+      </TouchableWithoutFeedback>
 
       {/* Menu */}
       <MenuButton top={insets.top} onPress={() => console.log('Open menu')} />
@@ -305,21 +346,35 @@ export default function HomeScreen() {
             <View style={styles.handle} />
           </View>
 
+          {/* Title & Description */}
+          <View style={styles.headerWrap}>
+            <View style={styles.headerRow}>
+              <Text style={styles.headerTitle}>Find Your Bus</Text>
+            </View>
+            <Text style={styles.headerSubtitle}>Search for next available bus below</Text>
+          </View>
+
           {/* Always‑visible search */}
           <View style={styles.searchWrap}>
             <Pressable onPress={expandToMid}>
-              <View style={[styles.searchRow, searchFocused && styles.searchRowFocused]}>
+              <View style={[
+                styles.searchRow, 
+                searchFocused && styles.searchRowFocused,
+                originError && styles.searchRowError
+              ]}>
                 <MaterialCommunityIcons name="magnify" size={20} color={TEXT_SECONDARY} style={{ marginRight: 10 }} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Enter your location"
-                  placeholderTextColor="rgba(255,255,255,0.35)"
-                  value={searchText}
-                  onChangeText={setSearchText}
-                  onFocus={() => { setSearchFocused(true); expandToMid(); }}
-                  onBlur={() => setSearchFocused(false)}
-                  selectionColor={ACCENT}
-                />
+                <View style={{ flex: 1 }}>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder={originError || "Enter your location"}
+                    placeholderTextColor={originError ? '#ff6b6b' : 'rgba(255,255,255,0.35)'}
+                    value={searchText}
+                    onChangeText={handleOriginChange}
+                    onFocus={() => { setSearchFocused(true); expandToMid(); }}
+                    onBlur={() => setSearchFocused(false)}
+                    selectionColor={ACCENT}
+                  />
+                </View>
               </View>
             </Pressable>
           </View>
@@ -334,29 +389,39 @@ export default function HomeScreen() {
               nestedScrollEnabled
             >
               {/* Where to? + Quick Actions */}
-              <View style={styles.whereRow}>
-                <View style={styles.whereBtn}>
-                  <MaterialCommunityIcons name="map-marker" size={18} color={ACCENT} style={{ marginRight: 8 }} />
-                  <TextInput
-                    style={styles.whereInput}
-                    placeholder="Where to?"
-                    placeholderTextColor={TEXT_SECONDARY}
-                    value={destination}
-                    onChangeText={setDestination}
-                    selectionColor={ACCENT}
-                  />
-                </View>
-                <View style={styles.quickActions}>
-                  <QuickActionButton
-                    icon="home-outline"
-                    active={activeQuick === 'home'}
-                    onPress={() => setActiveQuick(activeQuick === 'home' ? null : 'home')}
-                  />
-                  <QuickActionButton
-                    icon="briefcase-outline"
-                    active={activeQuick === 'work'}
-                    onPress={() => setActiveQuick(activeQuick === 'work' ? null : 'work')}
-                  />
+              <View>
+                <View style={styles.whereRow}>
+                  <View style={[
+                    styles.whereBtn,
+                    destinationError && styles.whereBtnError
+                  ]}>
+                    <MaterialCommunityIcons 
+                      name="map-marker" 
+                      size={18} 
+                      color={destinationError ? '#ff6b6b' : ACCENT} 
+                      style={{ marginRight: 8 }} 
+                    />
+                    <TextInput
+                      style={styles.whereInput}
+                      placeholder={destinationError || "Where to?"}
+                      placeholderTextColor={destinationError ? '#ff6b6b' : TEXT_SECONDARY}
+                      value={destination}
+                      onChangeText={handleDestinationChange}
+                      selectionColor={ACCENT}
+                    />
+                  </View>
+                  <View style={styles.quickActions}>
+                    <QuickActionButton
+                      icon="home-outline"
+                      active={activeQuick === 'home'}
+                      onPress={() => setActiveQuick(activeQuick === 'home' ? null : 'home')}
+                    />
+                    <QuickActionButton
+                      icon="briefcase-outline"
+                      active={activeQuick === 'work'}
+                      onPress={() => setActiveQuick(activeQuick === 'work' ? null : 'work')}
+                    />
+                  </View>
                 </View>
               </View>
 
@@ -377,8 +442,7 @@ export default function HomeScreen() {
               {/* Find Bus */}
               <Pressable
                 style={[styles.findButton, isButtonActive && styles.findButtonActive]}
-                onPress={() => console.log('Find bus', { from: searchText, to: destination })}
-                disabled={!isButtonActive}
+                onPress={handleFindBus}
               >
                 <Text style={[styles.findButtonText, isButtonActive && styles.findButtonTextActive]}>
                   Find Bus
@@ -396,8 +460,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
 
-  mapOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.15)' },
-  mapLoading: { ...StyleSheet.absoluteFillObject, backgroundColor: '#1a1a1c' },
+  mapOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.03)' },
+  mapLoading: { ...StyleSheet.absoluteFillObject, backgroundColor: '#aadaff' },
 
   /* The sheet is a full-height view that we translate downward.
      translateY pushes it off screen; lower value => more visible. */
@@ -421,6 +485,29 @@ const styles = StyleSheet.create({
     width: 40, height: 5, borderRadius: 3,
     backgroundColor: 'rgba(255,255,255,0.25)',
   },
+  headerWrap: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 8,
+    alignItems: 'center',
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    color: TEXT_PRIMARY,
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  headerSubtitle: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    marginTop: 2,
+    textAlign: 'center',
+  },
 
   searchWrap: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 4 },
 
@@ -431,6 +518,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, height: 50,
   },
   searchRowFocused: { borderColor: ACCENT },
+  searchRowError: { borderColor: '#ff6b6b', backgroundColor: 'rgba(255,107,107,0.05)' },
   searchInput: { flex: 1, color: TEXT_PRIMARY, fontSize: 15, padding: 0 },
 
   expandedWrap: { flex: 1, marginTop: 12 },
@@ -442,6 +530,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: BORDER,
     paddingHorizontal: 14, height: 48,
   },
+  whereBtnError: { borderColor: '#ff6b6b', backgroundColor: 'rgba(255,107,107,0.05)' },
   whereInput: { flex: 1, color: TEXT_PRIMARY, fontSize: 15, padding: 0 },
   quickActions: { flexDirection: 'row', gap: 8 },
 
@@ -453,10 +542,10 @@ const styles = StyleSheet.create({
 
   findButton: {
     width: '100%', height: 52, borderRadius: 16,
-    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    backgroundColor: '#c1ec72', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center', justifyContent: 'center', marginTop: 20,
   },
   findButtonActive: { backgroundColor: ACCENT, borderColor: ACCENT },
-  findButtonText: { color: TEXT_SECONDARY, fontSize: 16, fontWeight: '600' },
+  findButtonText: { color: '#888888', fontSize: 16, fontWeight: '600' },
   findButtonTextActive: { color: BG },
 });

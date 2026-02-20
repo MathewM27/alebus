@@ -5,11 +5,11 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-const ACCENT = '#6c6c72';
-const TAB_BG = '#0E0E10';
+const ACCENT = '#ffffff';
+const TAB_BG = '#000000';
 const TAB_INACTIVE = 'rgba(255,255,255,0.5)';
 const BAR_HEIGHT = 70;
-const FLOATING_SIZE = 48;
+const FLOATING_SIZE = 44;
 
 /* Custom Tab Bar with Floating Active Indicator */
 function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {

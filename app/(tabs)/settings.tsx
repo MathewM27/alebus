@@ -12,6 +12,7 @@ import React, { useCallback, useState } from "react";
 import {
   Alert,
   Dimensions,
+  Image,
   Keyboard,
   Pressable,
   ScrollView,
@@ -387,7 +388,11 @@ export default function SettingsScreen() {
             {/* Profile Picture */}
             <View style={styles.avatarContainer}>
               <View style={styles.avatar}>
-                <MaterialCommunityIcons name="account" size={48} color="#666" />
+                <Image
+                  source={require("@/assets/images/AlebusLogosSettings.png")}
+                  style={styles.avatarImage}
+                  resizeMode="contain"
+                />
               </View>
             </View>
 
@@ -567,6 +572,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 3,
     borderColor: "#e0e0e0",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: "150%",
+    height: "150%",
   },
   userName: {
     fontSize: 24,

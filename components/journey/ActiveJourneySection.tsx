@@ -1,12 +1,19 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useEffect, useRef } from "react";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Animated,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { useStopLookup } from "@/hooks/useStopLookup";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import {
-    toActiveJourneyCardModel,
-    type ActiveJourneyCardModel,
+  toActiveJourneyCardModel,
+  type ActiveJourneyCardModel,
 } from "@/utils/activeJourneyViewModel";
 
 /* ───────────── Skeleton Loader ───────────── */
@@ -132,15 +139,18 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          <View style={styles.textContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.textScroll}
+            contentContainerStyle={styles.textScrollContent}
+          >
             {model.distanceText === "---" ? (
               <SkeletonText style={styles.distanceText} />
             ) : (
-              <Text style={styles.distanceText} numberOfLines={1}>
-                {model.distanceText}
-              </Text>
+              <Text style={styles.distanceText}>{model.distanceText}</Text>
             )}
-          </View>
+          </ScrollView>
         </View>
 
         {/* ETA */}
@@ -152,15 +162,18 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          <View style={styles.textContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.textScroll}
+            contentContainerStyle={styles.textScrollContent}
+          >
             {model.etaText === "---" ? (
               <SkeletonText style={styles.etaText} />
             ) : (
-              <Text style={styles.etaText} numberOfLines={1}>
-                {model.etaText}
-              </Text>
+              <Text style={styles.etaText}>{model.etaText}</Text>
             )}
-          </View>
+          </ScrollView>
         </View>
       </View>
 
@@ -175,15 +188,14 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          <View style={styles.textContainer}>
-            <Text
-              style={styles.busPlate}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {model.busPlateLabel}
-            </Text>
-          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.textScroll}
+            contentContainerStyle={styles.textScrollContent}
+          >
+            <Text style={styles.busPlate}>{model.busPlateLabel}</Text>
+          </ScrollView>
         </View>
 
         {/* Operator */}
@@ -195,15 +207,14 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          <View style={styles.textContainer}>
-            <Text
-              style={styles.operatorName}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {model.operatorName}
-            </Text>
-          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.textScroll}
+            contentContainerStyle={styles.textScrollContent}
+          >
+            <Text style={styles.operatorName}>{model.operatorName}</Text>
+          </ScrollView>
         </View>
       </View>
 
@@ -218,15 +229,14 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          <View style={styles.textContainer}>
-            <Text
-              style={styles.proximityText}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {model.proximityLabel}
-            </Text>
-          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.textScroll}
+            contentContainerStyle={styles.textScrollContent}
+          >
+            <Text style={styles.proximityText}>{model.proximityLabel}</Text>
+          </ScrollView>
         </View>
 
         {/* Destination */}
@@ -238,19 +248,20 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          <View style={styles.textContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.textScroll}
+            contentContainerStyle={styles.textScrollContent}
+          >
             {model.destinationName === "Destination" ? (
               <SkeletonText style={styles.destinationName} />
             ) : (
-              <Text
-                style={styles.destinationName}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
+              <Text style={styles.destinationName}>
                 {model.destinationName}
               </Text>
             )}
-          </View>
+          </ScrollView>
         </View>
       </View>
     </View>
@@ -271,23 +282,9 @@ function InactiveRecommendationCard({
           size={14}
           color="rgba(255,255,255,0.3)"
         />
-        {model.destinationName === "Destination" ? (
-          <SkeletonText style={[styles.inactiveDestination, { flex: 1 }]} />
-        ) : (
-          <Text style={styles.inactiveDestination} numberOfLines={1}>
-            {model.destinationName}
-          </Text>
-        )}
-        <View
-          style={[
-            styles.inactiveProximityBadge,
-            { backgroundColor: "rgba(255,255,255,0.05)" },
-          ]}
-        >
-          <Text style={styles.inactiveProximityText}>
-            {model.proximityLabel}
-          </Text>
-        </View>
+        <Text style={styles.inactiveBusPlate} numberOfLines={1}>
+          {model.busPlateLabel}
+        </Text>
       </View>
       <View style={styles.inactiveMetrics}>
         {model.distanceText === "---" ? (
@@ -295,6 +292,7 @@ function InactiveRecommendationCard({
         ) : (
           <Text style={styles.inactiveDistance}>{model.distanceText}</Text>
         )}
+        <Text style={styles.inactiveMetricSeparator}>•</Text>
         {model.etaText === "---" ? (
           <SkeletonText style={styles.inactiveEta} />
         ) : (
@@ -347,9 +345,11 @@ const styles = StyleSheet.create({
     marginRight: 8,
     flexShrink: 0,
   },
-  textContainer: {
+  textScroll: {
     flex: 1,
-    overflow: "hidden",
+  },
+  textScrollContent: {
+    alignItems: "center",
   },
   destinationName: {
     color: TEXT_PRIMARY,
@@ -409,27 +409,20 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 6,
   },
-  inactiveDestination: {
+  inactiveBusPlate: {
     flex: 1,
     color: "rgba(255,255,255,0.5)",
     fontSize: 14,
-    fontWeight: "500",
-  },
-  inactiveProximityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  inactiveProximityText: {
-    color: "rgba(255,255,255,0.4)",
-    fontSize: 10,
     fontWeight: "600",
-    textTransform: "capitalize",
   },
   inactiveMetrics: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 8,
+  },
+  inactiveMetricSeparator: {
+    color: "rgba(255,255,255,0.25)",
+    fontSize: 12,
   },
   inactiveDistance: {
     color: "rgba(255,255,255,0.4)",
@@ -437,7 +430,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   inactiveEta: {
-    color: "rgba(255,255,255,0.25)",
+    color: "rgba(255,255,255,0.35)",
     fontSize: 12,
   },
 

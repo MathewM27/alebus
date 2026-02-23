@@ -1,6 +1,6 @@
 /**
  * Format distance for display
- * - < 1000m => "420 m away" (rounded to nearest 10m)
+ * - < 1000m => "1420 m away" (rounded to nearest 10m)
  * - >= 1000m => "1.3 km away" (1 decimal)
  */
 export function formatDistance(distanceMeters?: number | null): string {

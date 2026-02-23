@@ -5,6 +5,7 @@ import SubscriptionSection, {
 } from "@/components/settings/SubscriptionSection";
 import { useAuth } from "@/contexts/AuthContext";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import { Href, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useState } from "react";
@@ -30,6 +31,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -186,6 +188,7 @@ export default function SettingsScreen() {
   const translateY = useSharedValue(TY_MID); // Start at MID
   const ctx = useSharedValue(0);
   const isSectionExpanded = useSharedValue(false); // Track if profile/subscription is open
+  const overscrollGlow = useSharedValue(0); // overscroll indicator
 
   const snapTo = useCallback((target: number) => {
     "worklet";
@@ -200,14 +203,20 @@ export default function SettingsScreen() {
       ctx.value = translateY.value;
     })
     .onUpdate((e) => {
+      const rawY = ctx.value + e.translationY;
       // Restrict to MID minimum when no section is expanded
       const minY = isSectionExpanded.value ? TY_HIGH : TY_MID;
-      translateY.value = Math.max(
-        minY,
-        Math.min(ctx.value + e.translationY, TY_LOW),
-      );
+      // Track overscroll when trying to go beyond max height
+      if (rawY < minY) {
+        const overAmount = Math.min((minY - rawY) / 80, 1);
+        overscrollGlow.value = overAmount;
+      } else {
+        overscrollGlow.value = withTiming(0, { duration: 150 });
+      }
+      translateY.value = Math.max(minY, Math.min(rawY, TY_LOW));
     })
     .onEnd((e) => {
+      overscrollGlow.value = withTiming(0, { duration: 200 });
       const cur = translateY.value;
       const v = e.velocityY;
       const FLING = 600;
@@ -248,6 +257,10 @@ export default function SettingsScreen() {
   /* ── Animated styles ── */
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
+  }));
+
+  const glowStyle = useAnimatedStyle(() => ({
+    opacity: overscrollGlow.value,
   }));
 
   const expandedOpacity = useAnimatedStyle(() => ({
@@ -491,6 +504,19 @@ export default function SettingsScreen() {
               </Animated.View>
             </Animated.View>
           </GestureDetector>
+
+          {/* Overscroll glow effect - positioned at actual screen bottom */}
+          <Animated.View
+            style={[styles.glowOverlay, glowStyle]}
+            pointerEvents="none"
+          >
+            <LinearGradient
+              colors={["transparent", `${ACCENT}10`, `${ACCENT}40`]}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+            />
+          </Animated.View>
         </View>
       </TouchableWithoutFeedback>
     </GestureHandlerRootView>
@@ -569,6 +595,14 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     overflow: "hidden",
+  },
+  glowOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 20,
+    zIndex: 100,
   },
   handleArea: {
     alignItems: "center",

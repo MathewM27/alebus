@@ -132,13 +132,15 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          {model.distanceText === "---" ? (
-            <SkeletonText style={styles.distanceText} />
-          ) : (
-            <Text style={styles.distanceText} numberOfLines={1}>
-              {model.distanceText}
-            </Text>
-          )}
+          <View style={styles.textContainer}>
+            {model.distanceText === "---" ? (
+              <SkeletonText style={styles.distanceText} />
+            ) : (
+              <Text style={styles.distanceText} numberOfLines={1}>
+                {model.distanceText}
+              </Text>
+            )}
+          </View>
         </View>
 
         {/* ETA */}
@@ -150,13 +152,15 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          {model.etaText === "---" ? (
-            <SkeletonText style={styles.etaText} />
-          ) : (
-            <Text style={styles.etaText} numberOfLines={1}>
-              {model.etaText}
-            </Text>
-          )}
+          <View style={styles.textContainer}>
+            {model.etaText === "---" ? (
+              <SkeletonText style={styles.etaText} />
+            ) : (
+              <Text style={styles.etaText} numberOfLines={1}>
+                {model.etaText}
+              </Text>
+            )}
+          </View>
         </View>
       </View>
 
@@ -171,9 +175,15 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          <Text style={styles.busPlate} numberOfLines={1} ellipsizeMode="tail">
-            {model.busPlateLabel}
-          </Text>
+          <View style={styles.textContainer}>
+            <Text
+              style={styles.busPlate}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {model.busPlateLabel}
+            </Text>
+          </View>
         </View>
 
         {/* Operator */}
@@ -185,37 +195,34 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          <Text
-            style={styles.operatorName}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            {model.operatorName}
-          </Text>
+          <View style={styles.textContainer}>
+            <Text
+              style={styles.operatorName}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {model.operatorName}
+            </Text>
+          </View>
         </View>
       </View>
 
-      {/* Row 3: Proximity Badge + Destination */}
+      {/* Row 3: Proximity + Destination */}
       <View style={styles.splitRow}>
-        {/* Proximity Badge */}
+        {/* Proximity */}
         <View style={styles.splitItem}>
-          <View
-            style={[
-              styles.proximityBadge,
-              { backgroundColor: model.proximityColor.bg },
-            ]}
-          >
-            <View
-              style={[
-                styles.activeDot,
-                { backgroundColor: model.proximityColor.text },
-              ]}
+          <View style={styles.iconContainer}>
+            <MaterialCommunityIcons
+              name="bell-outline"
+              size={20}
+              color={TEXT_SECONDARY}
             />
+          </View>
+          <View style={styles.textContainer}>
             <Text
-              style={[
-                styles.proximityText,
-                { color: model.proximityColor.text },
-              ]}
+              style={styles.proximityText}
+              numberOfLines={1}
+              ellipsizeMode="tail"
             >
               {model.proximityLabel}
             </Text>
@@ -231,17 +238,19 @@ function ActiveJourneyCard({
               color={TEXT_SECONDARY}
             />
           </View>
-          {model.destinationName === "Destination" ? (
-            <SkeletonText style={styles.destinationName} />
-          ) : (
-            <Text
-              style={styles.destinationName}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {model.destinationName}
-            </Text>
-          )}
+          <View style={styles.textContainer}>
+            {model.destinationName === "Destination" ? (
+              <SkeletonText style={styles.destinationName} />
+            ) : (
+              <Text
+                style={styles.destinationName}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {model.destinationName}
+              </Text>
+            )}
+          </View>
         </View>
       </View>
     </View>
@@ -314,31 +323,17 @@ const styles = StyleSheet.create({
   splitRow: {
     flexDirection: "row",
     marginBottom: 12,
-    gap: 16,
   },
   splitItem: {
-    flex: 1,
+    width: "50%",
     flexDirection: "row",
     alignItems: "center",
-    minWidth: 0,
-  },
-  proximityBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 10,
-    gap: 6,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    paddingRight: 8,
   },
   proximityText: {
-    fontSize: 12,
+    color: TEXT_PRIMARY,
+    fontSize: 14,
     fontWeight: "600",
-    textTransform: "capitalize",
   },
   infoRow: {
     flexDirection: "row",
@@ -350,35 +345,36 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 8,
+    flexShrink: 0,
+  },
+  textContainer: {
+    flex: 1,
+    overflow: "hidden",
   },
   destinationName: {
-    flex: 1,
     color: TEXT_PRIMARY,
     fontSize: 14,
     fontWeight: "600",
   },
   busPlate: {
-    flex: 1,
     color: TEXT_PRIMARY,
     fontSize: 14,
     fontWeight: "600",
   },
   operatorName: {
-    flex: 1,
     color: TEXT_PRIMARY,
     fontSize: 14,
     fontWeight: "600",
   },
   distanceText: {
-    flex: 1,
     color: ACCENT,
     fontSize: 18,
     fontWeight: "700",
   },
   etaText: {
-    flex: 1,
-    color: TEXT_SECONDARY,
+    color: TEXT_PRIMARY,
     fontSize: 14,
+    fontWeight: "600",
   },
 
   /* End Tracking Button */

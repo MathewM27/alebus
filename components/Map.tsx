@@ -3,18 +3,25 @@ import { StyleSheet, View } from "react-native";
 import { WebView } from "react-native-webview";
 
 // ─────────────────────────────────────────────────
-// Feature flag: set to false to revert to WebView
+// Feature flag: Enable MapLibre native maps
 // ─────────────────────────────────────────────────
-const USE_MAPLIBRE = false; // Set to true after running: npx expo prebuild --clean && npx expo run:android
+// TO ENABLE MAPLIBRE:
+// 1. Run: npx expo prebuild --clean
+// 2. Run: npx expo run:android
+// 3. Uncomment the MapLibre import below
+// 4. Set USE_MAPLIBRE = true
+// ─────────────────────────────────────────────────
+const USE_MAPLIBRE = false;
 
-// Conditional import to avoid native module errors when not using MapLibre
-const MapLibreGL = USE_MAPLIBRE ? require("@maplibre/maplibre-react-native").default : null;
+// UNCOMMENT AFTER PREBUILD:
+// import MapLibreGL from "@maplibre/maplibre-react-native";
+const MapLibreGL: any = null; // Placeholder until native module is built
 
 // ─────────────────────────────────────────────────
 // Hosted MapLibre style URL
 // ─────────────────────────────────────────────────
 const STYLE_URL =
-  "https://alebus-maps-worker.mathewsmwangi6927.workers.dev/style.json";
+  "https://alebus-maps-worker.mathewsmwangi6927.workers.dev/style.json?=v2";
 
 // ─────────────────────────────────────────────────
 // Mauritius coordinates (lon, lat for MapLibre)
@@ -87,6 +94,7 @@ export default function Map({
       <View style={[StyleSheet.absoluteFillObject, style]}>
         <MapLibreGL.MapView
           style={StyleSheet.absoluteFillObject}
+          key={STYLE_URL}
           mapStyle={STYLE_URL}
           logoEnabled={false}
           attributionEnabled={false}

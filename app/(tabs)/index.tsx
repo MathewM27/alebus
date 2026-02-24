@@ -10,7 +10,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import {
@@ -356,9 +355,7 @@ export default function HomeScreen() {
 
       {/* Map */}
       <Map />
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.mapOverlay} />
-      </TouchableWithoutFeedback>
+      <View style={styles.mapOverlay} pointerEvents="none" />
 
       {/* Menu */}
       <MenuButton top={insets.top} onPress={() => console.log("Open menu")} />

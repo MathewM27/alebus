@@ -6,7 +6,7 @@ import { WebView } from "react-native-webview";
 // ─────────────────────────────────────────────────
 // Feature flag: set to false to revert to WebView
 // ─────────────────────────────────────────────────
-const USE_MAPLIBRE = true;
+const USE_MAPLIBRE = false; // Set to true after running: npx expo run:android
 
 // ─────────────────────────────────────────────────
 // Hosted MapLibre style URL

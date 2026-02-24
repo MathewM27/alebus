@@ -2,25 +2,25 @@ import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useState } from "react";
 import {
-    Dimensions,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View,
+  Dimensions,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import {
-    Gesture,
-    GestureDetector,
-    GestureHandlerRootView,
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
 } from "react-native-gesture-handler";
 import Animated, {
-    Extrapolation,
-    interpolate,
-    useAnimatedStyle,
-    useSharedValue,
-    withSpring,
-    withTiming,
+  Extrapolation,
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -28,8 +28,8 @@ import Map from "@/components/Map";
 
 import ActiveJourneySection from "@/components/journey/ActiveJourneySection";
 import ShortcutsSection, {
-    DEFAULT_SHORTCUTS,
-    Shortcut,
+  DEFAULT_SHORTCUTS,
+  Shortcut,
 } from "@/components/journey/ShortcutsSection";
 import { useJourney } from "@/contexts/JourneyContext";
 import { JourneyTrackingDTO } from "@/types/JourneyTracking";

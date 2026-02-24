@@ -1,27 +1,30 @@
+import MapLibreGL, { Logger } from "@maplibre/maplibre-react-native";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { WebView } from "react-native-webview";
 
 // ─────────────────────────────────────────────────
+// Suppress noisy MapLibre logs (Canceled requests are normal)
+// ─────────────────────────────────────────────────
+Logger.setLogCallback((log) => {
+  const { message } = log;
+  // Ignore "Canceled" logs - these are normal during navigation/zoom
+  if (message.includes("Request failed due to a permanent error: Canceled")) {
+    return true; // Suppress this log
+  }
+  return false; // Let other logs through
+});
+
+// ─────────────────────────────────────────────────
 // Feature flag: Enable MapLibre native maps
 // ─────────────────────────────────────────────────
-// TO ENABLE MAPLIBRE:
-// 1. Run: npx expo prebuild --clean
-// 2. Run: npx expo run:android
-// 3. Uncomment the MapLibre import below
-// 4. Set USE_MAPLIBRE = true
-// ─────────────────────────────────────────────────
-const USE_MAPLIBRE = false;
-
-// UNCOMMENT AFTER PREBUILD:
-// import MapLibreGL from "@maplibre/maplibre-react-native";
-const MapLibreGL: any = null; // Placeholder until native module is built
+const USE_MAPLIBRE = true;
 
 // ─────────────────────────────────────────────────
 // Hosted MapLibre style URL
 // ─────────────────────────────────────────────────
 const STYLE_URL =
-  "https://alebus-maps-worker.mathewsmwangi6927.workers.dev/style.json?=v2";
+  "https://alebus-maps-worker.mathewsmwangi6927.workers.dev/style.json?v=20260224-compat1";
 
 // ─────────────────────────────────────────────────
 // Mauritius coordinates (lon, lat for MapLibre)

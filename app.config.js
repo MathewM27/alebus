@@ -56,6 +56,7 @@ module.exports = {
         },
       ],
       'expo-secure-store',
+      '@maplibre/maplibre-react-native',
     ],
     experiments: {
       typedRoutes: true,

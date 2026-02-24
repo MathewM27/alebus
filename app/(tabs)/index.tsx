@@ -28,7 +28,8 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { WebView } from "react-native-webview";
+
+import Map from "@/components/Map";
 
 /* ───────────── constants ───────────── */
 const { height: SCREEN_H } = Dimensions.get("window");
@@ -62,60 +63,6 @@ const BUS_MARKERS = [
   { id: "5", lat: -20.4398, lng: 57.6592, title: "Mahebourg Station" },
   { id: "6", lat: -20.1, lng: 57.57, title: "Pamplemousses" },
 ];
-
-/* Leaflet map HTML — OpenStreetMap tiles (Google Maps style: blue sea, white land, dark roads) */
-const LEAFLET_HTML = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
-  <style>
-    * { margin: 0; padding: 0; }
-    html, body, #map { width: 100%; height: 100%; background: #aadaff; }
-    .leaflet-control-attribution { display: none !important; }
-    .leaflet-control-zoom { display: none !important; }
-    .bus-marker {
-      width: 24px; height: 24px; border-radius: 50%;
-      background: ${ACCENT}; display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.25), 0 0 0 2px rgba(255,255,255,0.8);
-      border: 2px solid #fff;
-    }
-    .bus-marker-inner { width: 8px; height: 8px; border-radius: 50%; background: #000; }
-    .leaflet-popup-content-wrapper {
-      background: #ffffff; color: #333; border-radius: 10px;
-      border: 1px solid rgba(0,0,0,0.1); box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-    }
-    .leaflet-popup-tip { background: #ffffff; }
-    .leaflet-popup-content { margin: 8px 12px; font-size: 13px; font-family: system-ui; }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <script>
-    var map = L.map('map', {
-      center: [-20.348404, 57.552152],
-      zoom: 10,
-      zoomControl: false,
-      attributionControl: false
-    });
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, subdomains: 'abc'
-    }).addTo(map);
-    var markers = ${JSON.stringify(BUS_MARKERS)};
-    markers.forEach(function(m) {
-      var icon = L.divIcon({
-        className: '',
-        html: '<div class="bus-marker"><div class="bus-marker-inner"></div></div>',
-        iconSize: [24, 24], iconAnchor: [12, 12]
-      });
-      L.marker([m.lat, m.lng], { icon: icon }).addTo(map).bindPopup(m.title);
-    });
-  <\/script>
-</body>
-</html>
-`;
 
 /* mock recent places */
 const RECENT_PLACES = [
@@ -408,16 +355,7 @@ export default function HomeScreen() {
       <StatusBar style="light" />
 
       {/* Map */}
-      <WebView
-        source={{ html: LEAFLET_HTML }}
-        style={StyleSheet.absoluteFillObject}
-        scrollEnabled={false}
-        overScrollMode="never"
-        javaScriptEnabled
-        domStorageEnabled
-        startInLoadingState
-        renderLoading={() => <View style={styles.mapLoading} />}
-      />
+      <Map />
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.mapOverlay} />
       </TouchableWithoutFeedback>

@@ -1,4 +1,3 @@
-import MapLibreGL from "@maplibre/maplibre-react-native";
 import React from "react";
 import { StyleSheet, View } from "react-native";
 import { WebView } from "react-native-webview";
@@ -6,7 +5,10 @@ import { WebView } from "react-native-webview";
 // ─────────────────────────────────────────────────
 // Feature flag: set to false to revert to WebView
 // ─────────────────────────────────────────────────
-const USE_MAPLIBRE = false; // Set to true after running: npx expo run:android
+const USE_MAPLIBRE = false; // Set to true after running: npx expo prebuild --clean && npx expo run:android
+
+// Conditional import to avoid native module errors when not using MapLibre
+const MapLibreGL = USE_MAPLIBRE ? require("@maplibre/maplibre-react-native").default : null;
 
 // ─────────────────────────────────────────────────
 // Hosted MapLibre style URL

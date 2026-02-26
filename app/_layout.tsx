@@ -1,15 +1,20 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import 'react-native-reanimated';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+} from "@react-navigation/native";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
+import "react-native-reanimated";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { AuthProvider } from '@/contexts/AuthContext';
-import { JourneyProvider } from '@/contexts/JourneyContext';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { bootReadyPromise } from '@/utils/boot';
+import { AuthProvider } from "@/contexts/AuthContext";
+import { JourneyProvider } from "@/contexts/JourneyContext";
+import { MapThemeProvider } from "@/contexts/MapThemeContext";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { bootReadyPromise } from "@/utils/boot";
 
 // Prevent native splash from auto-hiding on startup.
 // Module-scope call runs exactly once; .catch() silences harmless
@@ -27,7 +32,7 @@ SplashScreen.setOptions({
 const MIN_SPLASH_MS = 800;
 
 export const unstable_settings = {
-  anchor: '(tabs)',
+  anchor: "(tabs)",
 };
 
 export default function RootLayout() {
@@ -37,7 +42,7 @@ export default function RootLayout() {
   useEffect(() => {
     async function prepare() {
       const minDelay = new Promise<void>((resolve) =>
-        setTimeout(resolve, MIN_SPLASH_MS)
+        setTimeout(resolve, MIN_SPLASH_MS),
       );
 
       // Wait until BOTH conditions are true:
@@ -62,22 +67,24 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AuthProvider>
-          <JourneyProvider>
-            <Stack
-              screenOptions={{
-                headerShown: false,
-              }}
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="(boot)" />
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="(modals)" />
-            </Stack>
-            <StatusBar style="auto" />
-          </JourneyProvider>
-        </AuthProvider>
+      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+        <MapThemeProvider>
+          <AuthProvider>
+            <JourneyProvider>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                }}
+              >
+                <Stack.Screen name="index" />
+                <Stack.Screen name="(boot)" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="(modals)" />
+              </Stack>
+              <StatusBar style="auto" />
+            </JourneyProvider>
+          </AuthProvider>
+        </MapThemeProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

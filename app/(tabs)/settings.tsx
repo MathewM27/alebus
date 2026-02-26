@@ -1,38 +1,40 @@
+import MapThemeSection from "@/components/settings/MapThemeSection";
 import ProfileEditSection from "@/components/settings/ProfileEditSection";
 import SubscriptionSection, {
-  PaymentMethod,
-  PlanType,
+    PaymentMethod,
+    PlanType,
 } from "@/components/settings/SubscriptionSection";
 import { useAuth } from "@/contexts/AuthContext";
+import { useMapTheme } from "@/contexts/MapThemeContext";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Href, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useState } from "react";
 import {
-  Alert,
-  Dimensions,
-  Image,
-  Keyboard,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableWithoutFeedback,
-  View,
+    Alert,
+    Dimensions,
+    Image,
+    Keyboard,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableWithoutFeedback,
+    View,
 } from "react-native";
 import {
-  Gesture,
-  GestureDetector,
-  GestureHandlerRootView,
+    Gesture,
+    GestureDetector,
+    GestureHandlerRootView,
 } from "react-native-gesture-handler";
 import Animated, {
-  Extrapolation,
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
+    Extrapolation,
+    interpolate,
+    useAnimatedStyle,
+    useSharedValue,
+    withSpring,
+    withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -82,6 +84,12 @@ const ACTION_TILES: ActionTile[] = [
     id: "notification",
     icon: "bell-outline",
     label: "Notifications",
+    color: TEXT_PRIMARY,
+  },
+  {
+    id: "map-theme",
+    icon: "palette-outline",
+    label: "Map Theme",
     color: TEXT_PRIMARY,
   },
   { id: "logout", icon: "logout", label: "Logout", color: "#ff6b6b" },
@@ -167,6 +175,7 @@ const socialStyles = StyleSheet.create({
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { email, logout } = useAuth();
+  const { mapTheme, setMapTheme } = useMapTheme();
 
   // Extract name from email or use placeholder
   const userName = email ? email.split("@")[0] : "User";
@@ -184,6 +193,9 @@ export default function SettingsScreen() {
   const [selectedPlan, setSelectedPlan] = useState<PlanType>(null);
   const [showPaymentOptions, setShowPaymentOptions] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>(null);
+
+  /* ── Map Theme state ── */
+  const [showMapTheme, setShowMapTheme] = useState(false);
 
   /* ── shared values ── */
   const translateY = useSharedValue(TY_MID); // Start at MID
@@ -293,6 +305,7 @@ export default function SettingsScreen() {
       const willOpen = !showProfileEdit;
       setShowProfileEdit(willOpen);
       setShowSubscription(false); // Close other panels
+      setShowMapTheme(false);
 
       // Update expanded state and snap accordingly
       isSectionExpanded.value = willOpen;
@@ -307,6 +320,7 @@ export default function SettingsScreen() {
       const willOpen = !showSubscription;
       setShowSubscription(willOpen);
       setShowProfileEdit(false); // Close other panels
+      setShowMapTheme(false);
 
       // Update expanded state and snap accordingly
       isSectionExpanded.value = willOpen;
@@ -320,6 +334,19 @@ export default function SettingsScreen() {
       }
     } else if (tileId === "logout") {
       handleLogout();
+    } else if (tileId === "map-theme") {
+      const willOpen = !showMapTheme;
+      setShowMapTheme(willOpen);
+      setShowProfileEdit(false); // Close other panels
+      setShowSubscription(false);
+
+      // Update expanded state and snap accordingly
+      isSectionExpanded.value = willOpen;
+      if (willOpen) {
+        snapTo(TY_HIGH); // Auto-snap to HIGH when opening
+      } else {
+        snapTo(TY_MID); // Snap back to MID when closing
+      }
     } else {
       console.log("Pressed:", tileId);
       // TODO: Navigate to respective screens
@@ -489,6 +516,14 @@ export default function SettingsScreen() {
                     setSelectedPayment(null);
                   }}
                   onConfirmPayment={handleConfirmPayment}
+                />
+              )}
+
+              {/* Map Theme Section */}
+              {showMapTheme && (
+                <MapThemeSection
+                  currentTheme={mapTheme}
+                  onSelectTheme={setMapTheme}
                 />
               )}
 

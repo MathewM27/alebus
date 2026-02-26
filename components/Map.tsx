@@ -1,28 +1,30 @@
-import { Camera, CameraRef, Logger, MapView } from "@maplibre/maplibre-react-native";
+import {
+  Camera,
+  CameraRef,
+  Logger,
+  MapView,
+} from "@maplibre/maplibre-react-native";
 import React, { useRef } from "react";
 import { StyleSheet, View } from "react-native";
+
+import { useMapTheme } from "@/contexts/MapThemeContext";
 
 // ─────────────────────────────────────────────────
 // Suppress noisy MapLibre logs (Canceled requests are normal)
 // ─────────────────────────────────────────────────
 Logger.setLogCallback((log) => {
   const { message } = log;
-  if (message.includes("Request failed due to a permanent error: Canceled")) return true;
+  if (message.includes("Request failed due to a permanent error: Canceled"))
+    return true;
   return false;
 });
-
-// ─────────────────────────────────────────────────
-// Hosted MapLibre style URL
-// ─────────────────────────────────────────────────
-const STYLE_URL =
-  "https://alebus-maps-worker.mathewsmwangi6927.workers.dev/style.json?v=20260224-compat1";
 
 // ─────────────────────────────────────────────────
 // Mauritius coordinates and bounds (lon, lat for MapLibre)
 // ─────────────────────────────────────────────────
 const MAURITIUS_CENTER: [number, number] = [57.55, -20.25];
 const MAURITIUS_BOUNDS = {
-  sw: [57.10, -20.75] as [number, number],
+  sw: [57.1, -20.75] as [number, number],
   ne: [57.95, -19.85] as [number, number],
 };
 
@@ -53,16 +55,16 @@ export default function Map({
   onMapReady,
 }: MapProps) {
   const cameraRef = useRef<CameraRef>(null);
+  const { mapStyleUrl } = useMapTheme();
 
   return (
     <View style={[StyleSheet.absoluteFillObject, style]}>
       <MapView
         style={StyleSheet.absoluteFillObject}
-        key={STYLE_URL}
-        mapStyle={STYLE_URL}
+        key={mapStyleUrl}
+        mapStyle={mapStyleUrl}
         logoEnabled={false}
         attributionEnabled={false}
-        
         compassEnabled={false}
         onDidFinishLoadingMap={onMapReady}
       >

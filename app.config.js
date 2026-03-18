@@ -45,7 +45,7 @@ module.exports = {
       [
         'expo-splash-screen',
         {
-          image: './assets/images/Alebus logo.png',
+          image: './assets/images/icon.png',
           imageWidth: 200,
           resizeMode: 'contain',
           backgroundColor: '#ffffff',
@@ -56,6 +56,7 @@ module.exports = {
         },
       ],
       'expo-secure-store',
+      ['expo-web-browser', { experimentalLauncherActivity: false }],
       '@maplibre/maplibre-react-native',
     ],
     experiments: {

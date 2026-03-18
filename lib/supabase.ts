@@ -1,4 +1,3 @@
-import 'react-native-get-random-values'; // must be first import — polyfills WebCrypto for PKCE sha256
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import * as aesjs from 'aes-js';

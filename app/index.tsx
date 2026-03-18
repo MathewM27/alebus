@@ -12,9 +12,6 @@ export default function Index() {
 
   const checkAuthAndRedirect = async () => {
     try {
-      // TEMPORARY: Uncomment to reset onboarding for testing
-      await storage.clear();
-      
       // Don't redirect if user is already deep-linked into a route group.
       const inGroup = segments[0] as string;
       const validGroups = ['(boot)', '(tabs)', '(modals)', '(auth)'];

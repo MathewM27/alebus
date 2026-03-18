@@ -1,9 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Tabs } from 'expo-router';
-import React from 'react';
+import { Tabs, router } from 'expo-router';
+import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { useAuth } from '@/contexts/AuthContext';
 
 const ACCENT = '#ffffff';
 const TAB_BG = '#000000';
@@ -113,6 +114,19 @@ function getTabBarPath(activeIndex: number, width: number, height: number): stri
 }
 
 export default function TabLayout() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    console.log('[TabLayout] isLoading:', isLoading, 'isAuthenticated:', isAuthenticated);
+    if (!isLoading && !isAuthenticated) {
+      console.log('[TabLayout] not authenticated → redirecting to welcome');
+      router.replace('/(auth)/welcome');
+    }
+  }, [isAuthenticated, isLoading]);
+
+  // Return null while loading — splash screen covers this
+  if (isLoading) return null;
+
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}

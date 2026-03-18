@@ -31,9 +31,6 @@ SplashScreen.setOptions({
 /** Minimum time (ms) the splash stays visible for branding. */
 const MIN_SPLASH_MS = 800;
 
-export const unstable_settings = {
-  anchor: "(tabs)",
-};
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -78,6 +75,7 @@ export default function RootLayout() {
               >
                 <Stack.Screen name="index" />
                 <Stack.Screen name="(boot)" />
+                <Stack.Screen name="(auth)" options={{ gestureEnabled: false }} />
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="(modals)" />
               </Stack>

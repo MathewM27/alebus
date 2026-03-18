@@ -1,6 +1,13 @@
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { Image } from 'expo-image';
 import { Href, router } from 'expo-router';
+import { supabase } from '@/lib/supabase';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
+
+// Required for OAuth on Android — completes the auth session when the browser
+// redirects back to the app. Must be called at module level, not inside a component.
+WebBrowser.maybeCompleteAuthSession();
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -75,22 +82,53 @@ export default function SignUp() {
 
   const handleSendMagicLink = async () => {
     if (!validateForm()) return;
-    
+
     setIsLoading(true);
     try {
-      // TODO: Implement actual magic link API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: 'alebus://callback',
+          data: { full_name: fullName.trim() },
+        },
+      });
+      if (error) throw error;
       setMagicLinkSent(true);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending magic link:', error);
+      setErrors({ email: error?.message || 'Failed to send magic link. Please try again.' });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSocialLogin = (provider: 'google' | 'apple' | 'facebook') => {
-    // TODO: Implement social login
-    console.log(`${provider} login pressed`);
+  const handleSocialLogin = async (provider: 'google' | 'apple' | 'facebook') => {
+    if (provider !== 'google') return;
+
+    setIsLoading(true);
+    try {
+      const redirectUrl = Linking.createURL('callback');
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+      });
+      if (error) throw error;
+      if (!data.url) throw new Error('No OAuth URL returned');
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      if (result.type === 'success' && result.url) {
+        const parsed = new URL(result.url);
+        const code = parsed.searchParams.get('code');
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+        }
+      }
+    } catch (err: any) {
+      console.error('Google sign-in error:', err);
+      setErrors({ email: err?.message || 'Google sign-in failed. Please try again.' });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSignIn = () => {

@@ -10,7 +10,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Href, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
     Alert,
     Dimensions,
@@ -188,6 +188,14 @@ export default function SettingsScreen() {
   const [profileName, setProfileName] = useState(displayName);
   const [profileEmail, setProfileEmail] = useState(email || "");
 
+  useEffect(() => {
+    if (email) {
+      const name = email.split("@")[0];
+      setProfileName(name.charAt(0).toUpperCase() + name.slice(1));
+      setProfileEmail(email);
+    }
+  }, [email]);
+
   /* ── Subscription state ── */
   const [showSubscription, setShowSubscription] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<PlanType>(null);
@@ -294,7 +302,7 @@ export default function SettingsScreen() {
         style: "destructive",
         onPress: async () => {
           await logout();
-          router.replace("/(boot)/register" as Href);
+          router.replace("/(auth)/welcome" as Href);
         },
       },
     ]);
@@ -425,7 +433,7 @@ export default function SettingsScreen() {
 
             {/* Name & Email */}
             <Text style={styles.userName}>{displayName}</Text>
-            <Text style={styles.userEmail}>{email || "user@example.com"}</Text>
+            <Text style={styles.userEmail}>{email ?? ""}</Text>
 
             {/* Social Links */}
             <View style={styles.socialRow}>

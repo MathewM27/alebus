@@ -241,7 +241,7 @@ export default function SignIn() {
               <>
                 {/* Logo */}
                 <Image
-                  source={require('@/assets/images/iconAle.svg')}
+                  source={require('@/assets/images/icon.png')}
                   style={styles.logo}
                   contentFit="contain"
                 />

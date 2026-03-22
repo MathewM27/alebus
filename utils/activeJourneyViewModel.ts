@@ -1,18 +1,15 @@
-import { getOperatorName } from "@/constants/operators";
-import type {
-    JourneyTrackingDTO,
-    StopLookupResponse,
-} from "@/types/JourneyTracking";
+import type { BusDetailsDTO } from "@/services/api/buses";
+import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import {
-    formatDistance,
-    formatEta,
-    formatProximityLabel,
-    getProximityColor,
+  formatDistance,
+  formatEta,
+  formatProximityLabel,
+  getProximityColor,
 } from "@/utils/format";
 import { pickActiveRecommendation } from "@/utils/journeyTracking";
 
 export type ActiveJourneyCardModel = {
-  destinationName: string;
+  busLastStop: string;   // stop index from server (e.g. "Stop 5" or "Terminal")
   busPlateLabel: string;
   operatorName: string;
   distanceText: string;
@@ -23,24 +20,31 @@ export type ActiveJourneyCardModel = {
 };
 
 /**
- * Transform JourneyTrackingDTO to display model for the active journey card
+ * Transform JourneyTrackingDTO to display model for the active journey card.
+ * All display data comes from server — no client-side computation.
  */
 export function toActiveJourneyCardModel(
   journey: JourneyTrackingDTO,
-  stopLookup: StopLookupResponse | undefined,
+  busDetails: BusDetailsDTO | null,
+  operatorName: string | null,
   index: number = 0,
 ): ActiveJourneyCardModel {
   const activeRec = pickActiveRecommendation(journey);
 
-  const destinationName =
-    stopLookup?.[journey.destinationStopId]?.name ?? "Destination";
+  // Bus's last stop from server — shown in place of destination name
+  let busLastStop = "—";
+  if (busDetails) {
+    busLastStop = busDetails.isAtTerminal
+      ? "Terminal"
+      : `Stop ${busDetails.stopIndex}`;
+  }
 
   const busPlate = journey.activeBusId ?? activeRec?.busId ?? "—";
 
   return {
-    destinationName,
+    busLastStop,
     busPlateLabel: busPlate !== "—" ? `Bus ${busPlate}` : "Bus —",
-    operatorName: getOperatorName(activeRec?.operatorId),
+    operatorName: operatorName ?? "—",
     distanceText: formatDistance(activeRec?.distanceMeters),
     etaText: formatEta(activeRec?.estimatedArrival),
     proximityLabel: formatProximityLabel(journey.proximityName),
@@ -51,13 +55,13 @@ export function toActiveJourneyCardModel(
 
 /**
  * Transform array of journey recommendations to card models
- * First one is active, rest are inactive alternatives
  */
 export function toJourneyCardModels(
   journeys: JourneyTrackingDTO[],
-  stopLookup: StopLookupResponse | undefined,
+  busDetails: BusDetailsDTO | null,
+  operatorName: string | null,
 ): ActiveJourneyCardModel[] {
   return journeys.map((journey, index) =>
-    toActiveJourneyCardModel(journey, stopLookup, index),
+    toActiveJourneyCardModel(journey, busDetails, operatorName, index),
   );
 }

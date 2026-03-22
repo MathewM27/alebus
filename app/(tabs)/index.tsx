@@ -1,8 +1,11 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Location from "expo-location";
+import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useState } from "react";
 import {
+  ActivityIndicator,
   Dimensions,
   Keyboard,
   Pressable,
@@ -20,7 +23,6 @@ import {
 import Animated, {
   Extrapolation,
   interpolate,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -29,6 +31,7 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Map from "@/components/Map";
+import { loadAllStops, type NearbyStop } from "@/services/api/stops";
 
 /* ───────────── constants ───────────── */
 const { height: SCREEN_H } = Dimensions.get("window");
@@ -39,63 +42,18 @@ const SURFACE = "#151518";
 const TEXT_PRIMARY = "#FFFFFF";
 const TEXT_SECONDARY = "rgba(255,255,255,0.65)";
 const BORDER = "rgba(255,255,255,0.12)";
+const SUGGESTION_BG = "#1A1A1D";
 
 /* snap points – heights measured from the bottom of the screen */
 const SNAP_LOW = 140;
 const SNAP_MID = SCREEN_H * 0.5;
-const SNAP_HIGH = SCREEN_H * 0.7;
+const SNAP_HIGH = SCREEN_H * 0.85;
 
-/* translateY values that correspond to each snap height.
-   translateY = SCREEN_H - snapHeight  (lower = taller sheet) */
 const TY_HIGH = SCREEN_H - SNAP_HIGH;
 const TY_MID = SCREEN_H - SNAP_MID;
 const TY_LOW = SCREEN_H - SNAP_LOW;
 
 const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
-
-/* placeholder bus markers around Mauritius */
-const BUS_MARKERS = [
-  { id: "1", lat: -20.1609, lng: 57.5012, title: "Port Louis Terminal" },
-  { id: "2", lat: -20.2309, lng: 57.4992, title: "Quatre Bornes Stop" },
-  { id: "3", lat: -20.3168, lng: 57.5225, title: "Curepipe Central" },
-  { id: "4", lat: -20.2631, lng: 57.5803, title: "Centre de Flacq" },
-  { id: "5", lat: -20.4398, lng: 57.6592, title: "Mahebourg Station" },
-  { id: "6", lat: -20.1, lng: 57.57, title: "Pamplemousses" },
-];
-
-/* mock recent places */
-const RECENT_PLACES = [
-  {
-    id: "1",
-    type: "recent" as const,
-    title: "Curepipe Central",
-    subtitle: "Royal Road, Curepipe 74401",
-  },
-  {
-    id: "2",
-    type: "saved" as const,
-    title: "Port Louis Market",
-    subtitle: "Queen Street, Port Louis 11328",
-  },
-  {
-    id: "3",
-    type: "recent" as const,
-    title: "Rose Hill Transport Hub",
-    subtitle: "Royal Road, Rose Hill 71368",
-  },
-  {
-    id: "4",
-    type: "saved" as const,
-    title: "Quatre Bornes",
-    subtitle: "St Jean Road, Quatre Bornes 72257",
-  },
-  {
-    id: "5",
-    type: "recent" as const,
-    title: "Mahebourg Waterfront",
-    subtitle: "Rue des Hollandais, Mahebourg 50802",
-  },
-];
 
 /* ───────────── small sub-components ───────────── */
 
@@ -158,54 +116,59 @@ const quickStyles = StyleSheet.create({
   btnActive: { borderColor: ACCENT },
 });
 
-function PlaceCard({ item }: { item: (typeof RECENT_PLACES)[number] }) {
+
+/* ─────────────────────────────────────────────────
+   Suggestion row (shared between origin & dest lists)
+   ───────────────────────────────────────────────── */
+function SuggestionRow({
+  icon,
+  label,
+  sublabel,
+  onPress,
+}: {
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+  label: string;
+  sublabel?: string;
+  onPress: () => void;
+}) {
   return (
-    <Pressable
-      onPress={() => console.log("Navigate to", item.title)}
-      style={placeStyles.card}
-    >
-      <View style={placeStyles.titleRow}>
-        <View style={placeStyles.iconWrap}>
-          <MaterialCommunityIcons
-            name={
-              item.type === "recent" ? "clock-outline" : "map-marker-outline"
-            }
-            size={16}
-            color={TEXT_SECONDARY}
-          />
-        </View>
-        <Text style={placeStyles.title} numberOfLines={1}>
-          {item.title}
-        </Text>
+    <Pressable onPress={onPress} style={sugStyles.row}>
+      <View style={sugStyles.iconWrap}>
+        <MaterialCommunityIcons name={icon} size={16} color={TEXT_SECONDARY} />
       </View>
-      <Text style={placeStyles.subtitle} numberOfLines={2}>
-        {item.subtitle}
-      </Text>
+      <View style={{ flex: 1 }}>
+        <Text style={sugStyles.label} numberOfLines={1}>
+          {label}
+        </Text>
+        {sublabel ? (
+          <Text style={sugStyles.sublabel} numberOfLines={1}>
+            {sublabel}
+          </Text>
+        ) : null}
+      </View>
     </Pressable>
   );
 }
-const placeStyles = StyleSheet.create({
-  card: {
-    width: 220,
-    backgroundColor: SURFACE,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 14,
-    marginRight: 12,
+const sugStyles = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
   },
-  titleRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
   iconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 8,
+    marginRight: 12,
   },
-  title: { color: TEXT_PRIMARY, fontSize: 15, fontWeight: "500", flex: 1 },
-  subtitle: { color: TEXT_SECONDARY, fontSize: 13, lineHeight: 18 },
+  label: { color: TEXT_PRIMARY, fontSize: 14 },
+  sublabel: { color: TEXT_SECONDARY, fontSize: 12, marginTop: 1 },
 });
 
 /* ─────────────────────────────────────────────────
@@ -214,54 +177,138 @@ const placeStyles = StyleSheet.create({
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const [searchText, setSearchText] = useState("");
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [activeQuick, setActiveQuick] = useState<string | null>(null);
-  const [destination, setDestination] = useState("");
+
+  /* ── origin field ── */
+  const [originText, setOriginText] = useState("");
+  const [originFocused, setOriginFocused] = useState(false);
+  const [originLoading, setOriginLoading] = useState(false);
+  const [selectedOrigin, setSelectedOrigin] = useState<{
+    label: string;
+    lat: number;
+    lon: number;
+  } | null>(null);
   const [originError, setOriginError] = useState("");
+
+  /* ── destination field ── */
+  const [destText, setDestText] = useState("");
+  const [destFocused, setDestFocused] = useState(false);
+  const [destSuggestions, setDestSuggestions] = useState<NearbyStop[]>([]);
+  const [selectedStop, setSelectedStop] = useState<NearbyStop | null>(null);
   const [destinationError, setDestinationError] = useState("");
+  const [allStops, setAllStops] = useState<NearbyStop[]>([]);
+  const [stopsLoaded, setStopsLoaded] = useState(false);
+  const [stopsLoading, setStopsLoading] = useState(false);
 
-  const isButtonActive = searchText.trim() !== "" && destination.trim() !== "";
+  const [activeQuick, setActiveQuick] = useState<string | null>(null);
 
-  const handleFindBus = () => {
-    // Show errors one by one: check origin first
-    if (searchText.trim() === "") {
-      setOriginError("Please enter your starting location");
-      setDestinationError(""); // Clear destination error
-      return;
+  const isButtonActive = selectedOrigin !== null && selectedStop !== null;
+
+  /* ── Load all stops using Mauritius center (no GPS needed) ── */
+  const loadStops = useCallback(async () => {
+    if (stopsLoaded || stopsLoading) return;
+    setStopsLoading(true);
+    try {
+      const stops = await loadAllStops(-20.2, 57.55);
+      setAllStops(stops);
+      setStopsLoaded(true);
+    } catch {
+      setStopsLoaded(true);
+    } finally {
+      setStopsLoading(false);
     }
+  }, [stopsLoaded, stopsLoading]);
 
-    // If origin is filled, check destination next
-    if (destination.trim() === "") {
-      setOriginError(""); // Clear origin error
-      setDestinationError("Please enter your destination");
-      return;
+  /* ── Origin: get GPS on focus ── */
+  const handleOriginFocus = useCallback(async () => {
+    setOriginFocused(true);
+    expandToHigh();
+    if (selectedOrigin) return; // already have a location
+    setOriginLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") return;
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      setSelectedOrigin({
+        label: "My Location",
+        lat: loc.coords.latitude,
+        lon: loc.coords.longitude,
+      });
+      setOriginText("My Location");
+      setOriginError("");
+    } catch {
+      // user can type manually — field stays editable
+    } finally {
+      setOriginLoading(false);
     }
+  }, [selectedOrigin]);
 
-    // Both filled, proceed
-    setOriginError("");
-    setDestinationError("");
-    console.log("Find bus", { from: searchText, to: destination });
-    // TODO: Navigate to results or perform search
-  };
-
-  // Clear errors when user starts typing
-  const handleOriginChange = (text: string) => {
-    setSearchText(text);
+  /* Clear selection if user manually edits the origin field */
+  const handleOriginTextChange = (text: string) => {
+    setOriginText(text);
+    if (!text.trim()) setSelectedOrigin(null);
     if (originError) setOriginError("");
   };
 
-  const handleDestinationChange = (text: string) => {
-    setDestination(text);
+  /* ── Destination text change → filter loaded stops ── */
+  const handleDestChange = (text: string) => {
+    setDestText(text);
+    setSelectedStop(null);
     if (destinationError) setDestinationError("");
+
+    if (text.trim().length === 0) {
+      setDestSuggestions([]);
+      return;
+    }
+
+    const q = text.toLowerCase();
+    const filtered = allStops
+      .filter((s) => s.name.toLowerCase().includes(q))
+      .slice(0, 6);
+    setDestSuggestions(filtered);
+  };
+
+  const handleDestSelect = (stop: NearbyStop) => {
+    setSelectedStop(stop);
+    setDestText(stop.name);
+    setDestSuggestions([]);
+    setDestinationError("");
+    Keyboard.dismiss();
+  };
+
+  /* ── Find Bus ── */
+  const handleFindBus = () => {
+    if (!selectedOrigin) {
+      setOriginError("Please select your starting location");
+      setDestinationError("");
+      return;
+    }
+    if (!selectedStop) {
+      setOriginError("");
+      setDestinationError("Please select your destination stop");
+      return;
+    }
+    setOriginError("");
+    setDestinationError("");
+
+    // Navigate to journey tab; full API wiring in journey.tsx
+    router.push({
+      pathname: "/(tabs)/journey",
+      params: {
+        originLat: selectedOrigin.lat,
+        originLon: selectedOrigin.lon,
+        destStopId: selectedStop.id,
+        destStopName: selectedStop.name,
+      },
+    });
   };
 
   /* ── shared values ── */
-  const translateY = useSharedValue(TY_LOW); // start collapsed
-  const ctx = useSharedValue(0); // gesture context
-  const overscrollGlow = useSharedValue(0); // overscroll indicator
+  const translateY = useSharedValue(TY_LOW);
+  const ctx = useSharedValue(0);
+  const overscrollGlow = useSharedValue(0);
 
-  /* ── helpers (callable from UI thread via runOnJS) ── */
   const dismissKB = useCallback(() => Keyboard.dismiss(), []);
 
   const snapTo = useCallback((target: number) => {
@@ -269,28 +316,25 @@ export default function HomeScreen() {
     translateY.value = withSpring(target, SPRING_CFG);
   }, []);
 
-  /* called from JS thread (e.g. onFocus) */
-  const expandToMid = useCallback(() => {
-    translateY.value = withSpring(TY_MID, SPRING_CFG);
+  const expandToHigh = useCallback(() => {
+    translateY.value = withSpring(TY_HIGH, SPRING_CFG);
   }, []);
 
-  /* ── Pan gesture on the entire sheet ── */
+  /* ── Pan gesture ── */
   const pan = Gesture.Pan()
-    .activeOffsetY([-10, 10]) // only activate on vertical movement
-    .failOffsetX([-15, 15]) // fail gesture if horizontal movement exceeds threshold
+    .activeOffsetY([-10, 10])
+    .failOffsetX([-15, 15])
     .onStart(() => {
       ctx.value = translateY.value;
     })
     .onUpdate((e) => {
       const rawY = ctx.value + e.translationY;
-      // Track overscroll when trying to go beyond max height
       if (rawY < TY_HIGH) {
         const overAmount = Math.min((TY_HIGH - rawY) / 80, 1);
         overscrollGlow.value = overAmount;
       } else {
         overscrollGlow.value = withTiming(0, { duration: 150 });
       }
-      // clamp between fully expanded and fully collapsed
       translateY.value = Math.max(TY_HIGH, Math.min(rawY, TY_LOW));
     })
     .onEnd((e) => {
@@ -299,20 +343,16 @@ export default function HomeScreen() {
       const v = e.velocityY;
       const FLING = 600;
 
-      // fast fling → snap in fling direction
       if (Math.abs(v) > FLING) {
         if (v > 0) {
-          // flung downward
           snapTo(cur < TY_MID ? TY_MID : TY_LOW);
-          if (cur >= TY_MID) runOnJS(dismissKB)();
+          if (cur >= TY_MID) dismissKB();
         } else {
-          // flung upward
           snapTo(cur > TY_MID ? TY_MID : TY_HIGH);
         }
         return;
       }
 
-      // slow release → nearest snap
       const snaps = [TY_HIGH, TY_MID, TY_LOW];
       let best = snaps[0];
       let bestD = Math.abs(cur - snaps[0]);
@@ -324,7 +364,7 @@ export default function HomeScreen() {
         }
       }
       snapTo(best);
-      if (best === TY_LOW) runOnJS(dismissKB)();
+      if (best === TY_LOW) dismissKB();
     });
 
   /* ── Animated styles ── */
@@ -332,12 +372,10 @@ export default function HomeScreen() {
     transform: [{ translateY: translateY.value }],
   }));
 
-  // Overscroll glow effect
   const glowStyle = useAnimatedStyle(() => ({
     opacity: overscrollGlow.value,
   }));
 
-  // expanded content fades in as sheet rises above collapsed
   const expandedOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(
       translateY.value,
@@ -345,7 +383,6 @@ export default function HomeScreen() {
       [1, 0],
       Extrapolation.CLAMP,
     ),
-    // pointer events are handled in JSX via the wrapper
   }));
 
   /* ── Render ── */
@@ -378,44 +415,51 @@ export default function HomeScreen() {
             </Text>
           </View>
 
-          {/* Always‑visible search */}
+          {/* Origin search */}
           <View style={styles.searchWrap}>
-            <Pressable onPress={expandToMid}>
-              <View
-                style={[
-                  styles.searchRow,
-                  searchFocused && styles.searchRowFocused,
-                  originError && styles.searchRowError,
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name="magnify"
-                  size={20}
-                  color={TEXT_SECONDARY}
-                  style={{ marginRight: 10 }}
+            <View
+              style={[
+                styles.searchRow,
+                originFocused && styles.searchRowFocused,
+                originError ? styles.searchRowError : null,
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="magnify"
+                size={20}
+                color={TEXT_SECONDARY}
+                style={{ marginRight: 10 }}
+              />
+              <View style={{ flex: 1 }}>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder={originError || "Enter your location"}
+                  placeholderTextColor={
+                    originError ? "#ff6b6b" : "rgba(255,255,255,0.35)"
+                  }
+                  value={originText}
+                  onChangeText={handleOriginTextChange}
+                  onFocus={handleOriginFocus}
+                  onBlur={() => setOriginFocused(false)}
+                  selectionColor={ACCENT}
+                  returnKeyType="search"
                 />
-                <View style={{ flex: 1 }}>
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder={originError || "Enter your location"}
-                    placeholderTextColor={
-                      originError ? "#ff6b6b" : "rgba(255,255,255,0.35)"
-                    }
-                    value={searchText}
-                    onChangeText={handleOriginChange}
-                    onFocus={() => {
-                      setSearchFocused(true);
-                      expandToMid();
-                    }}
-                    onBlur={() => setSearchFocused(false)}
-                    selectionColor={ACCENT}
-                  />
-                </View>
               </View>
-            </Pressable>
+              {originLoading && (
+                <ActivityIndicator size="small" color={ACCENT} style={{ marginLeft: 6 }} />
+              )}
+              {selectedOrigin && !originFocused && (
+                <MaterialCommunityIcons
+                  name="check-circle"
+                  size={18}
+                  color={ACCENT}
+                  style={{ marginLeft: 6 }}
+                />
+              )}
+            </View>
           </View>
 
-          {/* Expanded content — fades in */}
+          {/* Expanded content */}
           <Animated.View style={[styles.expandedWrap, expandedOpacity]}>
             <ScrollView
               style={{ flex: 1 }}
@@ -433,13 +477,20 @@ export default function HomeScreen() {
                   <View
                     style={[
                       styles.whereBtn,
-                      destinationError && styles.whereBtnError,
+                      destFocused && styles.whereBtnFocused,
+                      destinationError ? styles.whereBtnError : null,
                     ]}
                   >
                     <MaterialCommunityIcons
                       name="map-marker"
                       size={18}
-                      color={destinationError ? "#ff6b6b" : ACCENT}
+                      color={
+                        destinationError
+                          ? "#ff6b6b"
+                          : selectedStop
+                          ? ACCENT
+                          : ACCENT
+                      }
                       style={{ marginRight: 8 }}
                     />
                     <TextInput
@@ -448,10 +499,28 @@ export default function HomeScreen() {
                       placeholderTextColor={
                         destinationError ? "#ff6b6b" : TEXT_SECONDARY
                       }
-                      value={destination}
-                      onChangeText={handleDestinationChange}
+                      value={destText}
+                      onChangeText={handleDestChange}
+                      onFocus={() => {
+                        setDestFocused(true);
+                        expandToHigh();
+                        loadStops();
+                      }}
+                      onBlur={() => setDestFocused(false)}
                       selectionColor={ACCENT}
+                      returnKeyType="search"
                     />
+                    {stopsLoading && (
+                      <ActivityIndicator size="small" color={ACCENT} style={{ marginLeft: 4 }} />
+                    )}
+                    {selectedStop && !destFocused && (
+                      <MaterialCommunityIcons
+                        name="check-circle"
+                        size={16}
+                        color={ACCENT}
+                        style={{ marginLeft: 4 }}
+                      />
+                    )}
                   </View>
                   <View style={styles.quickActions}>
                     <QuickActionButton
@@ -470,6 +539,28 @@ export default function HomeScreen() {
                     />
                   </View>
                 </View>
+
+                {/* Destination suggestions */}
+                {destSuggestions.length > 0 && (
+                  <View style={[styles.suggestionBox, { marginTop: -8, marginBottom: 12 }]}>
+                    {destSuggestions.map((stop) => (
+                      <SuggestionRow
+                        key={stop.id}
+                        icon="bus-stop"
+                        label={stop.name}
+                        sublabel={`${Math.round(stop.distanceMeters)}m away`}
+                        onPress={() => handleDestSelect(stop)}
+                      />
+                    ))}
+                  </View>
+                )}
+
+                {/* Empty state when dest focused but no results yet */}
+                {destFocused && destText.length > 1 && destSuggestions.length === 0 && !stopsLoading && stopsLoaded && (
+                  <View style={styles.emptyHint}>
+                    <Text style={styles.emptyHintText}>No stops found for "{destText}"</Text>
+                  </View>
+                )}
               </View>
 
               {/* Find Bus */}
@@ -490,25 +581,12 @@ export default function HomeScreen() {
                 </Text>
               </Pressable>
 
-              {/* Recent */}
-              <Text style={styles.sectionHeading}>Recent</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.placesScroll}
-                decelerationRate="fast"
-                snapToInterval={232}
-              >
-                {RECENT_PLACES.map((item) => (
-                  <PlaceCard key={item.id} item={item} />
-                ))}
-              </ScrollView>
             </ScrollView>
           </Animated.View>
         </Animated.View>
       </GestureDetector>
 
-      {/* Overscroll glow effect - positioned at actual screen bottom */}
+      {/* Overscroll glow */}
       <Animated.View
         style={[styles.glowOverlay, glowStyle]}
         pointerEvents="none"
@@ -532,10 +610,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.03)",
   },
-  mapLoading: { ...StyleSheet.absoluteFillObject, backgroundColor: "#aadaff" },
 
-  /* The sheet is a full-height view that we translate downward.
-     translateY pushes it off screen; lower value => more visible. */
   sheetOuter: {
     position: "absolute",
     top: 0,
@@ -614,6 +689,15 @@ const styles = StyleSheet.create({
 
   expandedWrap: { flex: 1, marginTop: 12 },
 
+  suggestionBox: {
+    backgroundColor: SUGGESTION_BG,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+
   whereRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -622,7 +706,6 @@ const styles = StyleSheet.create({
   },
   whereBtn: {
     flex: 1,
-    maxWidth: "90%",
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: SURFACE,
@@ -632,6 +715,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     height: 48,
   },
+  whereBtnFocused: { borderColor: ACCENT },
   whereBtnError: {
     borderColor: "#ff6b6b",
     backgroundColor: "rgba(255,107,107,0.05)",
@@ -639,16 +723,8 @@ const styles = StyleSheet.create({
   whereInput: { flex: 1, color: TEXT_PRIMARY, fontSize: 15, padding: 0 },
   quickActions: { flexDirection: "row", gap: 8 },
 
-  sectionHeading: {
-    color: TEXT_SECONDARY,
-    fontSize: 13,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginTop: 24,
-    marginBottom: 12,
-  },
-  placesScroll: { paddingRight: 20 },
+  emptyHint: { marginBottom: 12, paddingHorizontal: 4 },
+  emptyHintText: { color: TEXT_SECONDARY, fontSize: 13 },
 
   findButton: {
     width: "100%",
@@ -659,7 +735,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.15)",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 16,
+    marginTop: 4,
   },
   findButtonActive: { backgroundColor: ACCENT, borderColor: ACCENT },
   findButtonText: { color: "#888888", fontSize: 16, fontWeight: "600" },

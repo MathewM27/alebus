@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 
-import { useStopLookup } from "@/hooks/useStopLookup";
+import type { BusDetailsDTO } from "@/services/api/buses";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import {
   toActiveJourneyCardModel,
@@ -52,19 +52,17 @@ const BORDER = "rgba(255,255,255,0.12)";
 
 interface ActiveJourneySectionProps {
   journeyRecommendations: JourneyTrackingDTO[] | null;
+  busDetails: BusDetailsDTO | null;
+  operatorName: string | null;
   onEndTracking: () => void;
 }
 
 export default function ActiveJourneySection({
   journeyRecommendations,
+  busDetails,
+  operatorName,
   onEndTracking,
 }: ActiveJourneySectionProps) {
-  // Gather all destination stop IDs for lookup
-  const stopIds =
-    journeyRecommendations?.map((j) => j.destinationStopId).filter(Boolean) ??
-    [];
-  const { data: stopLookup } = useStopLookup(stopIds);
-
   if (!journeyRecommendations || journeyRecommendations.length === 0) {
     return (
       <View style={styles.inactiveCard}>
@@ -81,7 +79,7 @@ export default function ActiveJourneySection({
   return (
     <View style={styles.container}>
       {journeyRecommendations.map((journey, index) => {
-        const model = toActiveJourneyCardModel(journey, stopLookup, index);
+        const model = toActiveJourneyCardModel(journey, busDetails, operatorName, index);
 
         if (model.isActive) {
           return (
@@ -239,7 +237,7 @@ function ActiveJourneyCard({
           </ScrollView>
         </View>
 
-        {/* Destination */}
+        {/* Bus last stop */}
         <View style={styles.splitItem}>
           <View style={styles.iconContainer}>
             <MaterialCommunityIcons
@@ -254,12 +252,10 @@ function ActiveJourneyCard({
             style={styles.textScroll}
             contentContainerStyle={styles.textScrollContent}
           >
-            {model.destinationName === "Destination" ? (
+            {model.busLastStop === "—" ? (
               <SkeletonText style={styles.destinationName} />
             ) : (
-              <Text style={styles.destinationName}>
-                {model.destinationName}
-              </Text>
+              <Text style={styles.destinationName}>{model.busLastStop}</Text>
             )}
           </ScrollView>
         </View>

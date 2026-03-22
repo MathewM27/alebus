@@ -1,7 +1,9 @@
 import { LinearGradient } from "expo-linear-gradient";
+import { useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Dimensions,
   Pressable,
   ScrollView,
@@ -25,17 +27,19 @@ import Animated, {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Map from "@/components/Map";
-
 import ActiveJourneySection from "@/components/journey/ActiveJourneySection";
 import ShortcutsSection, {
   DEFAULT_SHORTCUTS,
-  Shortcut,
+  type Shortcut,
 } from "@/components/journey/ShortcutsSection";
-import { useJourney } from "@/contexts/JourneyContext";
-import { JourneyTrackingDTO } from "@/types/JourneyTracking";
+import { useAuth } from "@/contexts/AuthContext";
+import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
+import { createJourney, getJourneyTracking, type CreateJourneyResponse } from "@/services/api/journey";
+import { fetchOperatorName } from "@/services/api/operators";
+import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-/* ───────────── theme (reused from Home) ───────────── */
+/* ───────────── theme ───────────── */
 const { height: SCREEN_H } = Dimensions.get("window");
 const ACCENT = "#c1ec72";
 const BG = "#000000";
@@ -47,8 +51,8 @@ const BORDER = "rgba(255,255,255,0.12)";
 
 /* ── snap points ── */
 const SNAP_LOW = 140;
-const SNAP_MID = SCREEN_H * 0.46; // Mid snap (also max when no active journey)
-const SNAP_HIGH = SCREEN_H * 0.75; // High snap (only available with active journey)
+const SNAP_MID = SCREEN_H * 0.46;
+const SNAP_HIGH = SCREEN_H * 0.75;
 
 const TY_HIGH = SCREEN_H - SNAP_HIGH;
 const TY_MID = SCREEN_H - SNAP_MID;
@@ -56,93 +60,49 @@ const TY_LOW = SCREEN_H - SNAP_LOW;
 
 const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
 
-/* ── Mock Journey Tracking Recommendations for Preview (3 options from API) ── */
-const MOCK_JOURNEY_RECOMMENDATIONS: JourneyTrackingDTO[] = [
-  {
-    journeyId: "journey-1",
+/* ─────────────────────────────────────────────────
+   Map CreateJourneyResponse → JourneyTrackingDTO[]
+   One card per bus recommendation (index 0 = active card)
+   ───────────────────────────────────────────────── */
+function responseToCards(resp: CreateJourneyResponse): JourneyTrackingDTO[] {
+  console.log("[journey] mapping response → cards, recs:", resp.recommendations.length);
+  return resp.recommendations.map((rec, i) => ({
+    journeyId: i === 0 ? resp.journeyId : `${resp.journeyId}-alt-${i}`,
     status: 2,
     statusName: "tracking",
-    originStopId: "STOP_120",
-    destinationStopId: "STOP_240",
-    activeBusId: "1234 AB 21",
-    proximityName: "approaching",
-    recommendations: [
-      {
-        busId: "1234 AB 21",
-        operatorId: "OP_1",
-        estimatedArrival: 480000, // 8 min in ms
-        distanceMeters: 1420,
-        direction: 1,
-        isWrongDirection: false,
-      },
-    ],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    journeyId: "journey-2",
-    status: 1,
-    statusName: "planned",
-    originStopId: "STOP_120",
-    destinationStopId: "STOP_240",
-    activeBusId: "5678 CD 22",
-    proximityName: "near",
-    recommendations: [
-      {
-        busId: "5678 CD 22",
-        operatorId: "OP_3",
-        estimatedArrival: 780000, // 13 min in ms
-        distanceMeters: 1350,
-        direction: 1,
-        isWrongDirection: false,
-      },
-    ],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    journeyId: "journey-3",
-    status: 1,
-    statusName: "planned",
-    originStopId: "STOP_120",
-    destinationStopId: "STOP_240",
-    activeBusId: "9012 EF 23",
-    proximityName: "far",
-    recommendations: [
-      {
-        busId: "9012 EF 23",
-        operatorId: "OP_2",
-        estimatedArrival: 1140000, // 19 min in ms
-        distanceMeters: 2800,
-        direction: 1,
-        isWrongDirection: true, // Example of wrong direction
-      },
-    ],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
-/* ── same map markers as Home ── */
-const BUS_MARKERS = [
-  { id: "1", lat: -20.1609, lng: 57.5012, title: "Port Louis Terminal" },
-  { id: "2", lat: -20.2309, lng: 57.4992, title: "Quatre Bornes Stop" },
-  { id: "3", lat: -20.3168, lng: 57.5225, title: "Curepipe Central" },
-  { id: "4", lat: -20.2631, lng: 57.5803, title: "Centre de Flacq" },
-  { id: "5", lat: -20.4398, lng: 57.6592, title: "Mahebourg Station" },
-  { id: "6", lat: -20.1, lng: 57.57, title: "Pamplemousses" },
-];
+    originStopId: resp.originStopId,
+    destinationStopId: resp.destinationStopId,
+    activeBusId: rec.busId,
+    proximityName: "—",
+    recommendations: [rec],
+    estimatedDuration: resp.estimatedDurationMs,
+  }));
+}
 
 /* ─────────────────────────────────────────────────
    JourneyScreen
    ───────────────────────────────────────────────── */
-
 export default function JourneyScreen() {
   const insets = useSafeAreaInsets();
-  const { activeJourney } = useJourney();
+  const { userId: authUserId } = useAuth();
 
-  /* ── Preview mode for testing active journey UI ── */
-  const [showPreview, setShowPreview] = useState(false);
+  /* ── navigation params from "Find Bus" ── */
+  const params = useLocalSearchParams<{
+    originLat?: string;
+    originLon?: string;
+    destStopId?: string;
+    destStopName?: string;
+  }>();
+
+  /* ── API state ── */
+  const [recommendations, setRecommendations] = useState<JourneyTrackingDTO[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [journeyId, setJourneyId] = useState<string | null>(null);
+
+  /* ── Bus / operator enrichment ── */
+  const [busDetails, setBusDetails] = useState<BusDetailsDTO | null>(null);
+  const [operatorName, setOperatorName] = useState<string | null>(null);
 
   /* ── Shortcuts state ── */
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS);
@@ -150,22 +110,156 @@ export default function JourneyScreen() {
   /* ── shared values ── */
   const translateY = useSharedValue(TY_LOW);
   const ctx = useSharedValue(0);
-  const maxSnapY = useSharedValue(TY_MID); // Dynamic max snap based on active journey
-  const overscrollGlow = useSharedValue(0); // overscroll indicator
+  const maxSnapY = useSharedValue(TY_MID);
+  const overscrollGlow = useSharedValue(0);
 
-  // Determine if we're showing journey recommendations
-  // In preview mode: show mock data
-  // In production: use activeJourney from context (when API is connected)
-  const displayedRecommendations = showPreview
-    ? MOCK_JOURNEY_RECOMMENDATIONS
-    : null; // TODO: Replace with activeJourney?.recommendations when API is ready
-  const hasActiveJourney =
-    displayedRecommendations && displayedRecommendations.length > 0;
+  const hasRecommendations = recommendations.length > 0;
 
-  // Update max snap based on active journey state
-  React.useEffect(() => {
-    maxSnapY.value = hasActiveJourney ? TY_HIGH : TY_MID;
-  }, [hasActiveJourney, maxSnapY]);
+  // Update max snap when recommendations change
+  useEffect(() => {
+    maxSnapY.value = hasRecommendations ? TY_HIGH : TY_MID;
+    if (hasRecommendations) {
+      translateY.value = withSpring(TY_MID, SPRING_CFG);
+    }
+  }, [hasRecommendations]);
+
+  /* ── Track last param set to avoid duplicate calls ── */
+  const lastCallKey = useRef<string | null>(null);
+
+  /* ── Call API when params arrive ── */
+  useEffect(() => {
+    const { originLat, originLon, destStopId, destStopName } = params;
+
+    if (!originLat || !originLon || !destStopId) {
+      console.log("[journey] no params, skipping API call");
+      return;
+    }
+
+    const callKey = `${originLat}|${originLon}|${destStopId}`;
+    if (callKey === lastCallKey.current) {
+      console.log("[journey] duplicate param set, skipping:", callKey);
+      return;
+    }
+    lastCallKey.current = callKey;
+
+    console.log("[journey] params received →", { originLat, originLon, destStopId, destStopName });
+
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      setRecommendations([]);
+      setBusDetails(null);
+      setOperatorName(null);
+
+      if (!authUserId) {
+        console.warn("[journey] no authUserId — user not registered yet");
+        setError("Session error: not authenticated");
+        setLoading(false);
+        return;
+      }
+
+      console.log("[journey] calling createJourney for user:", authUserId);
+
+      try {
+        const resp = await createJourney({
+          userId: authUserId,
+          originLat: parseFloat(originLat),
+          originLon: parseFloat(originLon),
+          destinationStopId: destStopId,
+          radiusMeters: 500,
+        });
+
+        console.log("[journey] createJourney response:", {
+          journeyId: resp.journeyId,
+          originStopId: resp.originStopId,
+          destinationStopId: resp.destinationStopId,
+          requiredDirection: resp.requiredDirection,
+          recommendationCount: resp.recommendations.length,
+          estimatedDurationMs: resp.estimatedDurationMs,
+        });
+
+        if (resp.recommendations.length === 0) {
+          console.warn("[journey] 0 recommendations returned");
+          setError("No buses found for this route right now. Try again shortly.");
+          setLoading(false);
+          return;
+        }
+
+        const cards = responseToCards(resp);
+        console.log("[journey] setting", cards.length, "recommendation cards");
+        setJourneyId(resp.journeyId);
+        setRecommendations(cards);
+      } catch (err: any) {
+        const msg = err?.message ?? String(err);
+        const status = err?.status;
+        console.warn("[journey] createJourney error — status:", status, "msg:", msg);
+        setError(msg || "Failed to find a journey. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    run();
+  }, [params.originLat, params.originLon, params.destStopId]);
+
+  /* ── Poll journey tracking for server-side proximityName (every 15s) ── */
+  useEffect(() => {
+    if (!journeyId) return;
+
+    const poll = async () => {
+      const tracking = await getJourneyTracking(journeyId);
+      if (!tracking) return;
+      console.log("[journey] tracking poll — proximity:", tracking.proximityName, "level:", tracking.proximityLevel);
+      setRecommendations((prev) => {
+        if (prev.length === 0) return prev;
+        const next = [...prev];
+        next[0] = {
+          ...next[0],
+          proximityName: tracking.proximityName,
+          proximityLevel: tracking.proximityLevel,
+          recommendations: tracking.recommendations.length > 0
+            ? tracking.recommendations
+            : next[0].recommendations,
+        };
+        return next;
+      });
+    };
+
+    poll(); // immediate first fetch
+    const id = setInterval(poll, 15_000);
+    return () => clearInterval(id);
+  }, [journeyId]);
+
+  /* ── Poll bus details for position + stopIndex + operatorId (every 10s) ── */
+  useEffect(() => {
+    const activeBusId = recommendations[0]?.activeBusId;
+    if (!activeBusId) return;
+
+    const poll = async () => {
+      try {
+        const details = await getBusDetails(activeBusId);
+        console.log("[journey] bus poll — stopIndex:", details.stopIndex, "pos:", details.position.lat, details.position.lon);
+        setBusDetails(details);
+      } catch (e: any) {
+        console.warn("[journey] bus details fetch failed:", e?.message ?? e);
+      }
+    };
+
+    poll(); // immediate first fetch
+    const id = setInterval(poll, 10_000);
+    return () => clearInterval(id);
+  }, [recommendations[0]?.activeBusId]);
+
+  /* ── Fetch operator name once when operatorId is known ── */
+  useEffect(() => {
+    const operatorId = recommendations[0]?.recommendations[0]?.operatorId;
+    if (!operatorId || operatorName) return;
+
+    fetchOperatorName(operatorId).then((name) => {
+      console.log("[journey] operator name:", name, "for id:", operatorId);
+      setOperatorName(name);
+    });
+  }, [recommendations[0]?.recommendations[0]?.operatorId]);
 
   const snapTo = useCallback(
     (target: number) => {
@@ -185,7 +279,6 @@ export default function JourneyScreen() {
     .onUpdate((e) => {
       const rawY = ctx.value + e.translationY;
       const currentMax = maxSnapY.value;
-      // Track overscroll when trying to go beyond max height
       if (rawY < currentMax) {
         const overAmount = Math.min((currentMax - rawY) / 80, 1);
         overscrollGlow.value = overAmount;
@@ -242,36 +335,103 @@ export default function JourneyScreen() {
   }));
 
   /* ── Handlers ── */
+  const handleEndTracking = useCallback(() => {
+    console.log("[journey] end tracking, journeyId:", journeyId);
+    setRecommendations([]);
+    setJourneyId(null);
+    setBusDetails(null);
+    setOperatorName(null);
+    setError(null);
+    lastCallKey.current = null;
+    translateY.value = withSpring(TY_MID, SPRING_CFG);
+  }, [journeyId]);
+
   const handleStartJourney = (sc: Shortcut) => {
-    console.log("Start journey:", { from: sc.origin, to: sc.destination });
-    // TODO: Navigate to Home with prefilled origin/destination or call startJourney
+    console.log("[journey] shortcut tapped:", sc.origin, "→", sc.destination);
   };
 
   const handleEditStart = () => {
     translateY.value = withSpring(TY_MID, SPRING_CFG);
   };
 
-  const handleEndTracking = () => {
-    console.log("End tracking");
-    // Clear preview to hide active journey
-    setShowPreview(false);
-    // Snap back to mid since we'll lose access to high snap
-    translateY.value = withSpring(TY_MID, SPRING_CFG);
-    // TODO: End active journey tracking in context and clean up
+  /* ── Origin coords for map (from nav params) ── */
+  const userPosition = params.originLat && params.originLon
+    ? { lat: parseFloat(params.originLat), lon: parseFloat(params.originLon) }
+    : undefined;
+
+  const busPosition = busDetails?.position
+    ? { lat: busDetails.position.lat, lon: busDetails.position.lon }
+    : undefined;
+
+  /* ── Sheet content ── */
+  const renderSheetContent = () => {
+    if (loading) {
+      return (
+        <View style={styles.centeredState}>
+          <ActivityIndicator size="large" color={ACCENT} />
+          <Text style={styles.stateText}>Finding buses…</Text>
+        </View>
+      );
+    }
+
+    if (error) {
+      return (
+        <View style={styles.centeredState}>
+          <MaterialCommunityIcons name="alert-circle-outline" size={32} color="#ff6b6b" />
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable
+            style={styles.retryBtn}
+            onPress={() => {
+              lastCallKey.current = null;
+              setError(null);
+            }}
+          >
+            <Text style={styles.retryText}>Dismiss</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    if (hasRecommendations) {
+      return (
+        <ActiveJourneySection
+          journeyRecommendations={recommendations}
+          busDetails={busDetails}
+          operatorName={operatorName}
+          onEndTracking={handleEndTracking}
+        />
+      );
+    }
+
+    return (
+      <>
+        <ShortcutsSection
+          shortcuts={shortcuts}
+          onShortcutsChange={setShortcuts}
+          onStartJourney={handleStartJourney}
+          onEditStart={handleEditStart}
+        />
+        <View style={{ height: 40 }} />
+        <ActiveJourneySection
+          journeyRecommendations={null}
+          busDetails={null}
+          operatorName={null}
+          onEndTracking={handleEndTracking}
+        />
+      </>
+    );
   };
 
   return (
     <GestureHandlerRootView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Map */}
-      <Map />
+      <Map busPosition={busPosition} userPosition={userPosition} />
       <View style={styles.mapOverlay} pointerEvents="none" />
 
       {/* ── Bottom Sheet ── */}
       <GestureDetector gesture={pan}>
         <Animated.View style={[styles.sheetOuter, sheetStyle]}>
-          {/* Handle */}
           <View style={styles.handleArea}>
             <View style={styles.handle} />
           </View>
@@ -279,30 +439,10 @@ export default function JourneyScreen() {
           <View style={styles.headerWrap}>
             <Text style={styles.headerTitle}>Journeys</Text>
             <Text style={styles.headerSubtitle}>
-              Track and manage your trips
+              {hasRecommendations
+                ? `${recommendations.length} bus${recommendations.length !== 1 ? "es" : ""} found`
+                : "Track and manage your trips"}
             </Text>
-            {/* Preview toggle button */}
-            <Pressable
-              onPress={() => setShowPreview(!showPreview)}
-              style={({ pressed }) => [
-                styles.previewToggle,
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <MaterialCommunityIcons
-                name={showPreview ? "eye" : "eye-off"}
-                size={16}
-                color={showPreview ? ACCENT : TEXT_SECONDARY}
-              />
-              <Text
-                style={[
-                  styles.previewToggleText,
-                  { color: showPreview ? ACCENT : TEXT_SECONDARY },
-                ]}
-              >
-                {showPreview ? "Preview ON" : "Preview OFF"}
-              </Text>
-            </Pressable>
           </View>
 
           {/* Expanded content */}
@@ -317,40 +457,13 @@ export default function JourneyScreen() {
               nestedScrollEnabled
               keyboardShouldPersistTaps="handled"
             >
-              {hasActiveJourney ? (
-                <>
-                  {/* ── Active Journey Section (shown first when active) ── */}
-                  <ActiveJourneySection
-                    journeyRecommendations={displayedRecommendations}
-                    onEndTracking={handleEndTracking}
-                  />
-                </>
-              ) : (
-                <>
-                  {/* ── Shortcuts Section (shown first when no active journey) ── */}
-                  <ShortcutsSection
-                    shortcuts={shortcuts}
-                    onShortcutsChange={setShortcuts}
-                    onStartJourney={handleStartJourney}
-                    onEditStart={handleEditStart}
-                  />
-
-                  {/* Spacer */}
-                  <View style={{ height: 40 }} />
-
-                  {/* ── No Active Journey Message (shown at bottom) ── */}
-                  <ActiveJourneySection
-                    journeyRecommendations={displayedRecommendations}
-                    onEndTracking={handleEndTracking}
-                  />
-                </>
-              )}
+              {renderSheetContent()}
             </ScrollView>
           </Animated.View>
         </Animated.View>
       </GestureDetector>
 
-      {/* Overscroll glow effect - positioned at actual screen bottom */}
+      {/* Overscroll glow */}
       <Animated.View
         style={[styles.glowOverlay, glowStyle]}
         pointerEvents="none"
@@ -373,7 +486,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.03)",
   },
-  mapLoading: { ...StyleSheet.absoluteFillObject, backgroundColor: "#aadaff" },
 
   sheetOuter: {
     position: "absolute",
@@ -406,8 +518,6 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: "rgba(255,255,255,0.25)",
   },
-
-  /* Header */
   headerWrap: {
     paddingHorizontal: 20,
     paddingTop: 4,
@@ -426,22 +536,36 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textAlign: "center",
   },
-  previewToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 6,
-    marginTop: 8,
-  },
-  previewToggleText: {
-    fontSize: 11,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-
   expandedWrap: { flex: 1, marginTop: 8 },
+
+  centeredState: {
+    marginTop: 40,
+    alignItems: "center",
+    gap: 12,
+  },
+  stateText: {
+    color: TEXT_SECONDARY,
+    fontSize: 15,
+  },
+  errorText: {
+    color: "#ff6b6b",
+    fontSize: 14,
+    textAlign: "center",
+    paddingHorizontal: 20,
+    lineHeight: 20,
+  },
+  retryBtn: {
+    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: SURFACE,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  retryText: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
+    fontWeight: "600",
+  },
 });

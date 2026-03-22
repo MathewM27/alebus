@@ -1,5 +1,5 @@
 import type { StopLookupResponse } from "@/types/JourneyTracking";
-import { API_BASE_URL } from "./client";
+import { createAuthenticatedClient } from "./client";
 
 // Simple in-memory cache for stop lookups
 const stopCache: Map<string, { name: string; lat: number; lon: number }> =
@@ -43,31 +43,15 @@ export async function fetchStopLookup(
     }
   }
 
-  // If all stops are cached, return immediately
   if (idsToFetch.length === 0) {
     return cached;
   }
 
   try {
     const qs = encodeURIComponent(idsToFetch.join(","));
-    const res = await fetch(`${API_BASE_URL}/stops/lookup?ids=${qs}`);
+    const client = createAuthenticatedClient();
+    const data = await client.get<StopLookupResponse>(`/stops/lookup?ids=${qs}`);
 
-    if (!res.ok) {
-      console.warn(`Stop lookup failed: ${res.status}, using mock data`);
-      // Fallback to mock stops for development
-      const mockResult: StopLookupResponse = {};
-      for (const id of idsToFetch) {
-        if (MOCK_STOPS[id]) {
-          mockResult[id] = { id, ...MOCK_STOPS[id] };
-          stopCache.set(id, MOCK_STOPS[id]);
-        }
-      }
-      return { ...cached, ...mockResult };
-    }
-
-    const data = (await res.json()) as StopLookupResponse;
-
-    // Update cache with new stops
     for (const [id, stop] of Object.entries(data)) {
       stopCache.set(id, { name: stop.name, lat: stop.lat, lon: stop.lon });
     }
@@ -75,7 +59,6 @@ export async function fetchStopLookup(
     return { ...cached, ...data };
   } catch (error) {
     console.warn("Stop lookup error, using mock data:", error);
-    // Fallback to mock stops for development
     const mockResult: StopLookupResponse = {};
     for (const id of idsToFetch) {
       if (MOCK_STOPS[id]) {
@@ -100,17 +83,26 @@ export async function getNearbyStops(
   lon: number,
   radius = 500,
 ): Promise<NearbyStop[]> {
-  const url = `${API_BASE_URL}/stops/nearby?lat=${lat}&lon=${lon}&radius=${radius}`;
   try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      console.warn(`Nearby stops failed: ${res.status}`);
-      return [];
-    }
-    const data = await res.json() as { stops: NearbyStop[]; count: number };
+    const client = createAuthenticatedClient();
+    const data = await client.get<{ stops: NearbyStop[]; count: number }>(
+      `/stops/nearby?lat=${lat}&lon=${lon}&radius=${radius}`,
+    );
     return data.stops ?? [];
-  } catch (error) {
-    console.warn('getNearbyStops error:', error);
+  } catch (error: any) {
+    console.warn('getNearbyStops error:', error?.status ?? '', error?.message ?? error);
     return [];
   }
+}
+
+/**
+ * Load all stops on the island using a large radius from the given position
+ * (or Mauritius center if no position provided).
+ * Radius of 60_000m covers the entire island.
+ */
+export async function loadAllStops(
+  lat = -20.2,
+  lon = 57.55,
+): Promise<NearbyStop[]> {
+  return getNearbyStops(lat, lon, 60_000);
 }

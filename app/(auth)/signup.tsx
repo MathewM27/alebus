@@ -243,7 +243,7 @@ export default function SignUp() {
               <>
                 {/* Logo */}
                 <Image
-                  source={require('@/assets/images/iconAle.svg')}
+                  source={require('@/assets/images/icon.png')}
                   style={styles.logo}
                   contentFit="contain"
                 />

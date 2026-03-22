@@ -87,16 +87,30 @@ export async function fetchStopLookup(
   }
 }
 
-export async function getNearbyStops(
-  lat: number,
-  lng: number,
-  radius: number,
-): Promise<any> {
-  // TODO: Implement nearby stops fetching
-  throw new Error("Not implemented");
+export interface NearbyStop {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  distanceMeters: number;
 }
 
-export async function getStopDetails(stopId: string): Promise<any> {
-  // TODO: Implement stop details fetching
-  throw new Error("Not implemented");
+export async function getNearbyStops(
+  lat: number,
+  lon: number,
+  radius = 500,
+): Promise<NearbyStop[]> {
+  const url = `${API_BASE_URL}/stops/nearby?lat=${lat}&lon=${lon}&radius=${radius}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.warn(`Nearby stops failed: ${res.status}`);
+      return [];
+    }
+    const data = await res.json() as { stops: NearbyStop[]; count: number };
+    return data.stops ?? [];
+  } catch (error) {
+    console.warn('getNearbyStops error:', error);
+    return [];
+  }
 }

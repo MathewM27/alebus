@@ -34,7 +34,7 @@ import ShortcutsSection, {
 } from "@/components/journey/ShortcutsSection";
 import { useAuth } from "@/contexts/AuthContext";
 import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
-import { createJourney, getJourneyTracking, type CreateJourneyResponse } from "@/services/api/journey";
+import { cancelJourney, createJourney, getJourneyTracking, loadActiveJourneys, type CreateJourneyResponse } from "@/services/api/journey";
 import { fetchOperatorName } from "@/services/api/operators";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -126,6 +126,30 @@ export default function JourneyScreen() {
   /* ── Track last param set to avoid duplicate calls ── */
   const lastCallKey = useRef<string | null>(null);
 
+  /* ── On mount: load any existing active journeys if no nav params provided ── */
+  useEffect(() => {
+    if (!authUserId) return;
+    if (params.originLat || params.originLon || params.destStopId) return; // params will trigger createJourney instead
+
+    const load = async () => {
+      console.log("[journey] no nav params — checking for existing active journeys");
+      try {
+        const existing = await loadActiveJourneys(authUserId);
+        if (existing.length > 0) {
+          console.log("[journey] restored", existing.length, "active journey(s)");
+          setJourneyId(existing[0].journeyId);
+          setRecommendations(existing);
+        } else {
+          console.log("[journey] no active journeys found");
+        }
+      } catch (e: any) {
+        console.warn("[journey] failed to load active journeys on mount:", e?.message ?? e);
+      }
+    };
+
+    load();
+  }, [authUserId]);
+
   /* ── Call API when params arrive ── */
   useEffect(() => {
     const { originLat, originLon, destStopId, destStopName } = params;
@@ -193,7 +217,26 @@ export default function JourneyScreen() {
         const msg = err?.message ?? String(err);
         const status = err?.status;
         console.warn("[journey] createJourney error — status:", status, "msg:", msg);
-        setError(msg || "Failed to find a journey. Please try again.");
+
+        if (status === 409) {
+          // User already has active journeys — load and display them
+          console.log("[journey] 409 conflict — loading existing active journeys");
+          try {
+            const existing = await loadActiveJourneys(authUserId);
+            if (existing.length > 0) {
+              console.log("[journey] found", existing.length, "existing active journey(s)");
+              setJourneyId(existing[0].journeyId);
+              setRecommendations(existing);
+            } else {
+              setError("You have a journey in progress but it could not be loaded. Please try again.");
+            }
+          } catch (loadErr: any) {
+            console.warn("[journey] failed to load existing journeys:", loadErr?.message ?? loadErr);
+            setError("You already have an active journey. Please wait or try again shortly.");
+          }
+        } else {
+          setError(msg || "Failed to find a journey. Please try again.");
+        }
       } finally {
         setLoading(false);
       }
@@ -337,6 +380,23 @@ export default function JourneyScreen() {
   /* ── Handlers ── */
   const handleEndTracking = useCallback(() => {
     console.log("[journey] end tracking, journeyId:", journeyId);
+
+    // Cancel all real journey IDs on the backend (skip synthetic alt-IDs)
+    const realIds = recommendations
+      .map((r) => r.journeyId)
+      .filter((id) => !id.includes("-alt-"));
+    if (realIds.length > 0) {
+      Promise.allSettled(realIds.map((id) => cancelJourney(id))).then((results) => {
+        results.forEach((r, i) => {
+          if (r.status === "rejected") {
+            console.warn("[journey] cancel failed for", realIds[i], r.reason);
+          } else {
+            console.log("[journey] cancelled journey:", realIds[i]);
+          }
+        });
+      });
+    }
+
     setRecommendations([]);
     setJourneyId(null);
     setBusDetails(null);
@@ -344,7 +404,7 @@ export default function JourneyScreen() {
     setError(null);
     lastCallKey.current = null;
     translateY.value = withSpring(TY_MID, SPRING_CFG);
-  }, [journeyId]);
+  }, [journeyId, recommendations]);
 
   const handleStartJourney = (sc: Shortcut) => {
     console.log("[journey] shortcut tapped:", sc.origin, "→", sc.destination);

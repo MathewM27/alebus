@@ -46,23 +46,29 @@ export default function Map({
   const cameraRef = useRef<CameraRef>(null);
   const { mapStyleUrl } = useMapTheme();
 
-  // When both positions exist, center the camera between them
-  const cameraCenter: [number, number] = busPosition && userPosition
+  // Guard against uninitialized GPS (0,0 = null island)
+  const hasBusPos = !!busPosition && (Math.abs(busPosition.lat) > 0.001 || Math.abs(busPosition.lon) > 0.001);
+  const hasUserPos = !!userPosition && (Math.abs(userPosition.lat) > 0.001 || Math.abs(userPosition.lon) > 0.001);
+
+  // Camera center: midpoint when both valid, fallback to whichever is valid, else default
+  const cameraCenter: [number, number] = hasBusPos && hasUserPos
     ? [
-        (busPosition.lon + userPosition.lon) / 2,
-        (busPosition.lat + userPosition.lat) / 2,
+        (busPosition!.lon + userPosition!.lon) / 2,
+        (busPosition!.lat + userPosition!.lat) / 2,
       ]
-    : busPosition
-      ? [busPosition.lon, busPosition.lat]
-      : center;
+    : hasBusPos
+      ? [busPosition!.lon, busPosition!.lat]
+      : hasUserPos
+        ? [userPosition!.lon, userPosition!.lat]
+        : center;
 
-  const cameraZoom = busPosition ? 14 : zoom;
+  const cameraZoom = hasBusPos ? 14 : zoom;
 
-  // GeoJSON line connecting bus → user
+  // GeoJSON line connecting bus → user (only when both positions are valid)
   const lineGeoJSON: GeoJSON.FeatureCollection = {
     type: "FeatureCollection",
     features:
-      busPosition && userPosition
+      hasBusPos && hasUserPos
         ? [
             {
               type: "Feature",
@@ -70,8 +76,8 @@ export default function Map({
               geometry: {
                 type: "LineString",
                 coordinates: [
-                  [busPosition.lon, busPosition.lat],
-                  [userPosition.lon, userPosition.lat],
+                  [busPosition!.lon, busPosition!.lat],
+                  [userPosition!.lon, userPosition!.lat],
                 ],
               },
             },
@@ -105,7 +111,7 @@ export default function Map({
         />
 
         {/* Dashed line from bus to user */}
-        {busPosition && userPosition && (
+        {hasBusPos && hasUserPos && (
           <ShapeSource id="bus-line-source" shape={lineGeoJSON}>
             <LineLayer
               id="bus-line-layer"
@@ -120,9 +126,9 @@ export default function Map({
         )}
 
         {/* Bus marker */}
-        {busPosition && (
+        {hasBusPos && (
           <MarkerView
-            coordinate={[busPosition.lon, busPosition.lat]}
+            coordinate={[busPosition!.lon, busPosition!.lat]}
             anchor={{ x: 0.5, y: 0.5 }}
           >
             <View style={styles.busMarker}>
@@ -132,9 +138,9 @@ export default function Map({
         )}
 
         {/* User / origin marker */}
-        {userPosition && (
+        {hasUserPos && (
           <MarkerView
-            coordinate={[userPosition.lon, userPosition.lat]}
+            coordinate={[userPosition!.lon, userPosition!.lat]}
             anchor={{ x: 0.5, y: 0.5 }}
           >
             <View style={styles.userMarker}>

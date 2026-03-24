@@ -53,14 +53,16 @@ const BORDER = "rgba(255,255,255,0.12)";
 interface ActiveJourneySectionProps {
   journeyRecommendations: JourneyTrackingDTO[] | null;
   busDetails: BusDetailsDTO | null;
-  operatorName: string | null;
+  busStopName: string | null;
+  userStopName: string | null;
   onEndTracking: () => void;
 }
 
 export default function ActiveJourneySection({
   journeyRecommendations,
   busDetails,
-  operatorName,
+  busStopName,
+  userStopName,
   onEndTracking,
 }: ActiveJourneySectionProps) {
   if (!journeyRecommendations || journeyRecommendations.length === 0) {
@@ -79,7 +81,7 @@ export default function ActiveJourneySection({
   return (
     <View style={styles.container}>
       {journeyRecommendations.map((journey, index) => {
-        const model = toActiveJourneyCardModel(journey, busDetails, operatorName, index);
+        const model = toActiveJourneyCardModel(journey, busDetails, busStopName, userStopName, index);
 
         if (model.isActive) {
           return (
@@ -196,11 +198,11 @@ function ActiveJourneyCard({
           </ScrollView>
         </View>
 
-        {/* Operator */}
+        {/* Bus current stop */}
         <View style={styles.splitItem}>
           <View style={styles.iconContainer}>
             <MaterialCommunityIcons
-              name="bus"
+              name="bus-stop"
               size={20}
               color={TEXT_SECONDARY}
             />
@@ -211,7 +213,7 @@ function ActiveJourneyCard({
             style={styles.textScroll}
             contentContainerStyle={styles.textScrollContent}
           >
-            <Text style={styles.operatorName}>{model.operatorName}</Text>
+            <Text style={styles.operatorName}>{model.busStopName}</Text>
           </ScrollView>
         </View>
       </View>
@@ -237,7 +239,7 @@ function ActiveJourneyCard({
           </ScrollView>
         </View>
 
-        {/* Bus last stop */}
+        {/* User boarding stop */}
         <View style={styles.splitItem}>
           <View style={styles.iconContainer}>
             <MaterialCommunityIcons
@@ -252,10 +254,10 @@ function ActiveJourneyCard({
             style={styles.textScroll}
             contentContainerStyle={styles.textScrollContent}
           >
-            {model.busLastStop === "—" ? (
+            {model.userStopName === "—" ? (
               <SkeletonText style={styles.destinationName} />
             ) : (
-              <Text style={styles.destinationName}>{model.busLastStop}</Text>
+              <Text style={styles.destinationName}>{model.userStopName}</Text>
             )}
           </ScrollView>
         </View>

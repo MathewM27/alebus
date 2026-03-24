@@ -33,6 +33,7 @@ export interface MapProps {
   onMapReady?: () => void;
   busPosition?: { lat: number; lon: number };
   userPosition?: { lat: number; lon: number };
+  routeSegment?: { lat: number; lon: number }[]; // ordered road geometry bus→user
 }
 
 export default function Map({
@@ -42,6 +43,7 @@ export default function Map({
   onMapReady,
   busPosition,
   userPosition,
+  routeSegment,
 }: MapProps) {
   const cameraRef = useRef<CameraRef>(null);
   const { mapStyleUrl } = useMapTheme();
@@ -50,35 +52,40 @@ export default function Map({
   const hasBusPos = !!busPosition && (Math.abs(busPosition.lat) > 0.001 || Math.abs(busPosition.lon) > 0.001);
   const hasUserPos = !!userPosition && (Math.abs(userPosition.lat) > 0.001 || Math.abs(userPosition.lon) > 0.001);
 
-  // Camera center: midpoint when both valid, fallback to whichever is valid, else default
-  const cameraCenter: [number, number] = hasBusPos && hasUserPos
-    ? [
-        (busPosition!.lon + userPosition!.lon) / 2,
-        (busPosition!.lat + userPosition!.lat) / 2,
-      ]
-    : hasBusPos
-      ? [busPosition!.lon, busPosition!.lat]
-      : hasUserPos
-        ? [userPosition!.lon, userPosition!.lat]
-        : center;
+  // Camera follows bus when available (navigation mode), else fallback
+  const cameraCenter: [number, number] = hasBusPos
+    ? [busPosition!.lon, busPosition!.lat]
+    : hasUserPos
+      ? [userPosition!.lon, userPosition!.lat]
+      : center;
 
-  const cameraZoom = hasBusPos ? 14 : zoom;
+  const cameraZoom = hasBusPos ? 15 : zoom;
 
-  // GeoJSON line connecting bus → user (only when both positions are valid)
+  // Build line coordinates: route segment if available, else straight bus→user
+  const lineCoords: [number, number][] = (() => {
+    if (routeSegment && routeSegment.length >= 2) {
+      return routeSegment.map((p) => [p.lon, p.lat]);
+    }
+    if (hasBusPos && hasUserPos) {
+      return [
+        [busPosition!.lon, busPosition!.lat],
+        [userPosition!.lon, userPosition!.lat],
+      ];
+    }
+    return [];
+  })();
+
   const lineGeoJSON: GeoJSON.FeatureCollection = {
     type: "FeatureCollection",
     features:
-      hasBusPos && hasUserPos
+      lineCoords.length >= 2
         ? [
             {
               type: "Feature",
               properties: {},
               geometry: {
                 type: "LineString",
-                coordinates: [
-                  [busPosition!.lon, busPosition!.lat],
-                  [userPosition!.lon, userPosition!.lat],
-                ],
+                coordinates: lineCoords,
               },
             },
           ]
@@ -110,8 +117,8 @@ export default function Map({
           maxZoomLevel={MAX_ZOOM}
         />
 
-        {/* Dashed line from bus to user */}
-        {hasBusPos && hasUserPos && (
+        {/* Route line: road geometry if available, else straight bus→user */}
+        {lineCoords.length >= 2 && (
           <ShapeSource id="bus-line-source" shape={lineGeoJSON}>
             <LineLayer
               id="bus-line-layer"

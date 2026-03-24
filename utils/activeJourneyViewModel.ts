@@ -9,9 +9,9 @@ import {
 import { pickActiveRecommendation } from "@/utils/journeyTracking";
 
 export type ActiveJourneyCardModel = {
-  busLastStop: string;   // stop index from server (e.g. "Stop 5" or "Terminal")
+  busStopName: string;   // name of stop where bus currently is
+  userStopName: string;  // name of user's boarding stop
   busPlateLabel: string;
-  operatorName: string;
   distanceText: string;
   etaText: string;
   proximityLabel: string;
@@ -19,32 +19,21 @@ export type ActiveJourneyCardModel = {
   isActive: boolean;
 };
 
-/**
- * Transform JourneyTrackingDTO to display model for the active journey card.
- * All display data comes from server — no client-side computation.
- */
 export function toActiveJourneyCardModel(
   journey: JourneyTrackingDTO,
   busDetails: BusDetailsDTO | null,
-  operatorName: string | null,
+  busStopName: string | null,
+  userStopName: string | null,
   index: number = 0,
 ): ActiveJourneyCardModel {
   const activeRec = pickActiveRecommendation(journey);
 
-  // Bus's last stop from server — shown in place of destination name
-  let busLastStop = "—";
-  if (busDetails) {
-    busLastStop = busDetails.isAtTerminal
-      ? "Terminal"
-      : `Stop ${busDetails.stopIndex}`;
-  }
-
   const busPlate = journey.activeBusId ?? activeRec?.busId ?? "—";
 
   return {
-    busLastStop,
+    busStopName: busStopName ?? (busDetails ? (busDetails.isAtTerminal ? "Terminal" : `Stop ${busDetails.stopIndex}`) : "—"),
+    userStopName: userStopName ?? "—",
     busPlateLabel: busPlate !== "—" ? `Bus ${busPlate}` : "Bus —",
-    operatorName: operatorName ?? "—",
     distanceText: formatDistance(activeRec?.distanceMeters),
     etaText: formatEta(activeRec?.estimatedArrival),
     proximityLabel: formatProximityLabel(journey.proximityName),
@@ -53,15 +42,13 @@ export function toActiveJourneyCardModel(
   };
 }
 
-/**
- * Transform array of journey recommendations to card models
- */
 export function toJourneyCardModels(
   journeys: JourneyTrackingDTO[],
   busDetails: BusDetailsDTO | null,
-  operatorName: string | null,
+  busStopName: string | null,
+  userStopName: string | null,
 ): ActiveJourneyCardModel[] {
   return journeys.map((journey, index) =>
-    toActiveJourneyCardModel(journey, busDetails, operatorName, index),
+    toActiveJourneyCardModel(journey, busDetails, busStopName, userStopName, index),
   );
 }

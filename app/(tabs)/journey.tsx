@@ -35,7 +35,7 @@ import ShortcutsSection, {
 import { useAuth } from "@/contexts/AuthContext";
 import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
 import { cancelJourney, createJourney, getJourneyTracking, loadActiveJourneys, type CreateJourneyResponse } from "@/services/api/journey";
-import { fetchOperatorName } from "@/services/api/operators";
+import { fetchRouteStops } from "@/services/api/stops";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -100,9 +100,11 @@ export default function JourneyScreen() {
   const [error, setError] = useState<string | null>(null);
   const [journeyId, setJourneyId] = useState<string | null>(null);
 
-  /* ── Bus / operator enrichment ── */
+  /* ── Bus / stop enrichment ── */
   const [busDetails, setBusDetails] = useState<BusDetailsDTO | null>(null);
-  const [operatorName, setOperatorName] = useState<string | null>(null);
+  const [busStopName, setBusStopName] = useState<string | null>(null);
+  const [userStopName, setUserStopName] = useState<string | null>(null);
+  const [routeSegment, setRouteSegment] = useState<{ lat: number; lon: number }[] | undefined>(undefined);
 
   /* ── Shortcuts state ── */
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS);
@@ -173,7 +175,9 @@ export default function JourneyScreen() {
       setError(null);
       setRecommendations([]);
       setBusDetails(null);
-      setOperatorName(null);
+      setBusStopName(null);
+      setUserStopName(null);
+      setRouteSegment(undefined);
 
       if (!authUserId) {
         console.warn("[journey] no authUserId — user not registered yet");
@@ -293,16 +297,42 @@ export default function JourneyScreen() {
     return () => clearInterval(id);
   }, [recommendations[0]?.activeBusId]);
 
-  /* ── Fetch operator name once when operatorId is known ── */
+  /* ── Resolve stop names + road polyline from route stops ── */
   useEffect(() => {
-    const operatorId = recommendations[0]?.recommendations[0]?.operatorId;
-    if (!operatorId || operatorName) return;
+    if (!busDetails?.routeId || busDetails.stopIndex == null) return;
+    const originStopId = recommendations[0]?.originStopId;
 
-    fetchOperatorName(operatorId).then((name) => {
-      console.log("[journey] operator name:", name, "for id:", operatorId);
-      setOperatorName(name);
+    fetchRouteStops(busDetails.routeId).then((stops) => {
+      // Bus current stop name
+      const busStop = stops.find((s) => s.seq === busDetails.stopIndex);
+      setBusStopName(busStop?.name ?? null);
+      console.log("[journey] bus stop name:", busStop?.name, "seq:", busDetails.stopIndex);
+
+      // User boarding stop name (look up by stop id in route stops)
+      if (originStopId) {
+        const userStop = stops.find((s) => s.id === originStopId);
+        setUserStopName(userStop?.name ?? null);
+        console.log("[journey] user stop name:", userStop?.name, "id:", originStopId);
+
+        // Build road-following polyline: bus GPS → pathToNext segments → user boarding stop
+        const pos = busDetails.position;
+        if (busStop && userStop && pos && (Math.abs(pos.lat) > 0.001 || Math.abs(pos.lon) > 0.001)) {
+          const coords: { lat: number; lon: number }[] = [{ lat: pos.lat, lon: pos.lon }];
+          for (let seq = busStop.seq; seq < userStop.seq; seq++) {
+            const seg = stops.find((s) => s.seq === seq);
+            if (seg?.pathToNext?.length) {
+              coords.push(...seg.pathToNext);
+            } else {
+              const next = stops.find((s) => s.seq === seq + 1);
+              if (next) coords.push({ lat: next.lat, lon: next.lon });
+            }
+          }
+          coords.push({ lat: userStop.lat, lon: userStop.lon });
+          setRouteSegment(coords.length >= 2 ? coords : undefined);
+        }
+      }
     });
-  }, [recommendations[0]?.recommendations[0]?.operatorId]);
+  }, [busDetails?.routeId, busDetails?.stopIndex, busDetails?.position?.lat, busDetails?.position?.lon, recommendations[0]?.originStopId]);
 
   const snapTo = useCallback(
     (target: number) => {
@@ -400,7 +430,9 @@ export default function JourneyScreen() {
     setRecommendations([]);
     setJourneyId(null);
     setBusDetails(null);
-    setOperatorName(null);
+    setBusStopName(null);
+    setUserStopName(null);
+    setRouteSegment(undefined);
     setError(null);
     lastCallKey.current = null;
     translateY.value = withSpring(TY_MID, SPRING_CFG);
@@ -457,7 +489,8 @@ export default function JourneyScreen() {
         <ActiveJourneySection
           journeyRecommendations={recommendations}
           busDetails={busDetails}
-          operatorName={operatorName}
+          busStopName={busStopName}
+          userStopName={userStopName}
           onEndTracking={handleEndTracking}
         />
       );
@@ -475,7 +508,8 @@ export default function JourneyScreen() {
         <ActiveJourneySection
           journeyRecommendations={null}
           busDetails={null}
-          operatorName={null}
+          busStopName={null}
+          userStopName={null}
           onEndTracking={handleEndTracking}
         />
       </>
@@ -486,7 +520,7 @@ export default function JourneyScreen() {
     <GestureHandlerRootView style={styles.container}>
       <StatusBar style="light" />
 
-      <Map busPosition={busPosition} userPosition={userPosition} />
+      <Map busPosition={busPosition} userPosition={userPosition} routeSegment={routeSegment} />
       <View style={styles.mapOverlay} pointerEvents="none" />
 
       {/* ── Bottom Sheet ── */}

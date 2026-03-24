@@ -106,3 +106,32 @@ export async function loadAllStops(
 ): Promise<NearbyStop[]> {
   return getNearbyStops(lat, lon, 60_000);
 }
+
+export interface RouteStop {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  seq: number;
+  pathToNext?: { lat: number; lon: number }[];
+}
+
+const routeStopsCache: Map<string, RouteStop[]> = new Map();
+
+/**
+ * Fetch ordered stops for a route (with names + coordinates).
+ * Cached per routeId for the session.
+ */
+export async function fetchRouteStops(routeId: string): Promise<RouteStop[]> {
+  if (routeStopsCache.has(routeId)) return routeStopsCache.get(routeId)!;
+  try {
+    const client = createAuthenticatedClient();
+    const data = await client.get<{ stops: RouteStop[] }>(`/routes/${encodeURIComponent(routeId)}`);
+    const stops = (data.stops ?? []).filter(s => s.lat && s.lon);
+    routeStopsCache.set(routeId, stops);
+    return stops;
+  } catch (e: any) {
+    console.warn('[stops] fetchRouteStops failed:', e?.message ?? e);
+    return [];
+  }
+}

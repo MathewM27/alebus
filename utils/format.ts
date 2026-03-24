@@ -37,7 +37,7 @@ export function formatEta(ms?: number | null): string {
  * e.g., "near" => "Near"
  */
 export function formatProximityLabel(name?: string | null): string {
-  if (!name) return "—";
+  if (!name || name.toLowerCase() === "none") return "Far";
   return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
 }
 

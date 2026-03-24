@@ -188,6 +188,7 @@ export default function HomeScreen() {
     lon: number;
   } | null>(null);
   const [originError, setOriginError] = useState("");
+  const [originSuggestions, setOriginSuggestions] = useState<NearbyStop[]>([]);
 
   /* ── destination field ── */
   const [destText, setDestText] = useState("");
@@ -218,11 +219,39 @@ export default function HomeScreen() {
     }
   }, [stopsLoaded, stopsLoading]);
 
-  /* ── Origin: get GPS on focus ── */
-  const handleOriginFocus = useCallback(async () => {
+  /* ── Origin: focus just expands + loads stops ── */
+  const handleOriginFocus = useCallback(() => {
     setOriginFocused(true);
     expandToHigh();
-    if (selectedOrigin) return; // already have a location
+    loadStops();
+  }, [loadStops]);
+
+  /* ── Origin: filter stops as user types ── */
+  const handleOriginTextChange = (text: string) => {
+    setOriginText(text);
+    setSelectedOrigin(null);
+    if (originError) setOriginError("");
+
+    if (!text.trim()) {
+      setOriginSuggestions([]);
+      return;
+    }
+
+    const q = text.toLowerCase();
+    setOriginSuggestions(allStops.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6));
+  };
+
+  /* ── Origin: select a stop from suggestions ── */
+  const handleOriginSelect = (stop: NearbyStop) => {
+    setSelectedOrigin({ label: stop.name, lat: stop.lat, lon: stop.lon });
+    setOriginText(stop.name);
+    setOriginSuggestions([]);
+    setOriginError("");
+    Keyboard.dismiss();
+  };
+
+  /* ── Origin: GPS pin button — fetch current location ── */
+  const handleGetCurrentLocation = useCallback(async () => {
     setOriginLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -236,20 +265,15 @@ export default function HomeScreen() {
         lon: loc.coords.longitude,
       });
       setOriginText("My Location");
+      setOriginSuggestions([]);
       setOriginError("");
+      Keyboard.dismiss();
     } catch {
-      // user can type manually — field stays editable
+      // silent — user can still type manually
     } finally {
       setOriginLoading(false);
     }
-  }, [selectedOrigin]);
-
-  /* Clear selection if user manually edits the origin field */
-  const handleOriginTextChange = (text: string) => {
-    setOriginText(text);
-    if (!text.trim()) setSelectedOrigin(null);
-    if (originError) setOriginError("");
-  };
+  }, []);
 
   /* ── Destination text change → filter loaded stops ── */
   const handleDestChange = (text: string) => {
@@ -416,10 +440,11 @@ export default function HomeScreen() {
           </View>
 
           {/* Origin search */}
-          <View style={styles.searchWrap}>
+          <View style={[styles.searchWrap, { flexDirection: "row", alignItems: "center", gap: 10 }]}>
             <View
               style={[
                 styles.searchRow,
+                { flex: 1 },
                 originFocused && styles.searchRowFocused,
                 originError ? styles.searchRowError : null,
               ]}
@@ -433,7 +458,7 @@ export default function HomeScreen() {
               <View style={{ flex: 1 }}>
                 <TextInput
                   style={styles.searchInput}
-                  placeholder={originError || "Enter your location"}
+                  placeholder={originError || "Search stop or address"}
                   placeholderTextColor={
                     originError ? "#ff6b6b" : "rgba(255,255,255,0.35)"
                   }
@@ -448,7 +473,7 @@ export default function HomeScreen() {
               {originLoading && (
                 <ActivityIndicator size="small" color={ACCENT} style={{ marginLeft: 6 }} />
               )}
-              {selectedOrigin && !originFocused && (
+              {selectedOrigin && !originLoading && (
                 <MaterialCommunityIcons
                   name="check-circle"
                   size={18}
@@ -457,6 +482,11 @@ export default function HomeScreen() {
                 />
               )}
             </View>
+            <QuickActionButton
+              icon="crosshairs-gps"
+              active={selectedOrigin?.label === "My Location"}
+              onPress={handleGetCurrentLocation}
+            />
           </View>
 
           {/* Expanded content */}
@@ -471,6 +501,26 @@ export default function HomeScreen() {
               showsVerticalScrollIndicator={false}
               nestedScrollEnabled
             >
+              {/* Origin suggestions */}
+              {originSuggestions.length > 0 && (
+                <View style={[styles.suggestionBox, { marginBottom: 12 }]}>
+                  {originSuggestions.map((stop) => (
+                    <SuggestionRow
+                      key={stop.id}
+                      icon="bus-stop"
+                      label={stop.name}
+                      sublabel={`${Math.round(stop.distanceMeters)}m away`}
+                      onPress={() => handleOriginSelect(stop)}
+                    />
+                  ))}
+                </View>
+              )}
+              {originFocused && originText.length > 1 && originSuggestions.length === 0 && !stopsLoading && stopsLoaded && (
+                <View style={styles.emptyHint}>
+                  <Text style={styles.emptyHintText}>No stops found for "{originText}"</Text>
+                </View>
+              )}
+
               {/* Where to? + Quick Actions */}
               <View>
                 <View style={styles.whereRow}>

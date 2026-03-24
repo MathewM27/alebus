@@ -61,19 +61,11 @@ export default function Map({
 
   const cameraZoom = hasBusPos ? 15 : zoom;
 
-  // Build line coordinates: route segment if available, else straight bus→user
-  const lineCoords: [number, number][] = (() => {
-    if (routeSegment && routeSegment.length >= 2) {
-      return routeSegment.map((p) => [p.lon, p.lat]);
-    }
-    if (hasBusPos && hasUserPos) {
-      return [
-        [busPosition!.lon, busPosition!.lat],
-        [userPosition!.lon, userPosition!.lat],
-      ];
-    }
-    return [];
-  })();
+  // Only draw line when road geometry is ready (avoids straight-line flicker on load)
+  const lineCoords: [number, number][] =
+    routeSegment && routeSegment.length >= 2
+      ? routeSegment.map((p) => [p.lon, p.lat])
+      : [];
 
   const lineGeoJSON: GeoJSON.FeatureCollection = {
     type: "FeatureCollection",

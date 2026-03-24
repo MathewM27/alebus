@@ -317,6 +317,8 @@ export default function HomeScreen() {
     setDestinationError("");
 
     // Navigate to journey tab; full API wiring in journey.tsx
+    // ts ensures params always change even on repeat Find Bus taps with the same data,
+    // so journey.tsx's useEffect dependency array fires on every new request.
     router.push({
       pathname: "/(tabs)/journey",
       params: {
@@ -324,6 +326,7 @@ export default function HomeScreen() {
         originLon: selectedOrigin.lon,
         destStopId: selectedStop.id,
         destStopName: selectedStop.name,
+        ts: Date.now(),
       },
     });
   };

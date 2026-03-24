@@ -34,7 +34,7 @@ import ShortcutsSection, {
 } from "@/components/journey/ShortcutsSection";
 import { useAuth } from "@/contexts/AuthContext";
 import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
-import { cancelJourney, createJourney, getJourneyTracking, loadActiveJourneys, type CreateJourneyResponse } from "@/services/api/journey";
+import { cancelJourney, createJourney, loadActiveJourneys, refreshJourney, type CreateJourneyResponse } from "@/services/api/journey";
 import { fetchRouteStops } from "@/services/api/stops";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -59,6 +59,16 @@ const TY_MID = SCREEN_H - SNAP_MID;
 const TY_LOW = SCREEN_H - SNAP_LOW;
 
 const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
+
+/* ── Proximity level (int) → name used by format.ts color/label helpers ── */
+function proximityLevelToName(level: number): string {
+  switch (level) {
+    case 1: return "approaching"; // ≤500m
+    case 2: return "near";        // ≤100m
+    case 3: return "arriving";    // ≤50m
+    default: return "none";       // >500m or unknown
+  }
+}
 
 /* ─────────────────────────────────────────────────
    Map CreateJourneyResponse → JourneyTrackingDTO[]
@@ -92,6 +102,7 @@ export default function JourneyScreen() {
     originLon?: string;
     destStopId?: string;
     destStopName?: string;
+    ts?: string; // nonce: ensures same-params repeat navigations re-trigger the effect
   }>();
 
   /* ── API state ── */
@@ -161,7 +172,7 @@ export default function JourneyScreen() {
       return;
     }
 
-    const callKey = `${originLat}|${originLon}|${destStopId}`;
+    const callKey = `${originLat}|${originLon}|${destStopId}|${params.ts ?? ""}`;
     if (callKey === lastCallKey.current) {
       console.log("[journey] duplicate param set, skipping:", callKey);
       return;
@@ -247,29 +258,33 @@ export default function JourneyScreen() {
     };
 
     run();
-  }, [params.originLat, params.originLon, params.destStopId]);
+  }, [params.originLat, params.originLon, params.destStopId, params.ts]);
 
-  /* ── Poll journey tracking for server-side proximityName (every 15s) ── */
+  /* ── Poll journey refresh: computes live proximity from Redis (every 15s) ── */
   useEffect(() => {
     if (!journeyId) return;
 
     const poll = async () => {
-      const tracking = await getJourneyTracking(journeyId);
-      if (!tracking) return;
-      console.log("[journey] tracking poll — proximity:", tracking.proximityName, "level:", tracking.proximityLevel);
-      setRecommendations((prev) => {
-        if (prev.length === 0) return prev;
-        const next = [...prev];
-        next[0] = {
-          ...next[0],
-          proximityName: tracking.proximityName,
-          proximityLevel: tracking.proximityLevel,
-          recommendations: tracking.recommendations.length > 0
-            ? tracking.recommendations
-            : next[0].recommendations,
-        };
-        return next;
-      });
+      try {
+        const resp = await refreshJourney(journeyId);
+        const proximityName = proximityLevelToName(resp.proximityLevel);
+        console.log("[journey] refresh poll — proximityLevel:", resp.proximityLevel, "→", proximityName);
+        setRecommendations((prev) => {
+          if (prev.length === 0) return prev;
+          const next = [...prev];
+          next[0] = {
+            ...next[0],
+            proximityName,
+            proximityLevel: resp.proximityLevel,
+            recommendations: resp.recommendations.length > 0
+              ? resp.recommendations
+              : next[0].recommendations,
+          };
+          return next;
+        });
+      } catch (e: any) {
+        console.warn("[journey] refresh poll failed:", e?.message ?? e);
+      }
     };
 
     poll(); // immediate first fetch
@@ -446,8 +461,8 @@ export default function JourneyScreen() {
     translateY.value = withSpring(TY_MID, SPRING_CFG);
   };
 
-  /* ── Origin coords for map (from nav params) ── */
-  const userPosition = params.originLat && params.originLon
+  /* ── Map positions: only active while tracking (cleared on end) ── */
+  const userPosition = hasRecommendations && params.originLat && params.originLon
     ? { lat: parseFloat(params.originLat), lon: parseFloat(params.originLon) }
     : undefined;
 

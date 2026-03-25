@@ -33,7 +33,7 @@ import ShortcutsSection, {
   type Shortcut,
 } from "@/components/journey/ShortcutsSection";
 import { useAuth } from "@/contexts/AuthContext";
-import { type BusDetailsDTO } from "@/services/api/buses";
+import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
 import { cancelJourney, createJourney, loadActiveJourneys, type CreateJourneyResponse } from "@/services/api/journey";
 import { fetchRouteStops } from "@/services/api/stops";
 import { busMuxClient } from "@/services/ws/busMuxClient";
@@ -306,6 +306,17 @@ export default function JourneyScreen() {
   /* ── Smooth bus position via WS (replaces 10s HTTP poll) ── */
   const activeBusId = recommendations[0]?.activeBusId ?? null;
   const { displayPos, latestBus } = useBusPosition(activeBusId);
+
+  /* ── One-time initial HTTP fetch so map/stops render before first WS frame ── */
+  useEffect(() => {
+    if (!activeBusId) return;
+    getBusDetails(activeBusId)
+      .then((details) => {
+        // Only apply if WS hasn't already delivered a frame (latestBus takes precedence)
+        setBusDetails((prev) => prev ?? details);
+      })
+      .catch((e: any) => console.warn("[journey] initial bus fetch:", e?.message ?? e));
+  }, [activeBusId]);
 
   /* ── Sync latestBus → busDetails for route segment computation ── */
   useEffect(() => {

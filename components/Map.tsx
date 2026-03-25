@@ -59,7 +59,7 @@ export default function Map({
       ? [userPosition!.lon, userPosition!.lat]
       : center;
 
-  const cameraZoom = hasBusPos ? 15 : zoom;
+  const cameraZoom = hasBusPos ? 15 : hasUserPos ? 15 : zoom;
 
   const lineCoords = useMemo<[number, number][]>(
     () =>

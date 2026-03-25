@@ -94,3 +94,45 @@ export function roadPosition(
   // Past the end — return last polyline point
   return { lat: path[path.length - 1].lat, lon: path[path.length - 1].lon };
 }
+
+/**
+ * Returns the portion of a polyline STARTING at fraction t (0–1).
+ * The first point is the interpolated position at t; subsequent points
+ * are the original path vertices from that segment onward.
+ *
+ * Used to draw only the "ahead" portion of a road segment for the route
+ * overlay (bus snapped position → user stop), avoiding backward kinks.
+ */
+export function pathAfterFraction(
+  path: { lat: number; lon: number }[],
+  t: number,
+): { lat: number; lon: number }[] {
+  if (!path || path.length === 0) return [];
+  if (t <= 0) return [...path];
+  if (t >= 1) return [path[path.length - 1]];
+
+  let totalLen = 0;
+  const segLengths: number[] = [];
+  for (let i = 0; i < path.length - 1; i++) {
+    const d = haversine(path[i], path[i + 1]);
+    segLengths.push(d);
+    totalLen += d;
+  }
+  if (totalLen === 0) return [path[0]];
+
+  const target = t * totalLen;
+  let traveled = 0;
+  for (let i = 0; i < segLengths.length; i++) {
+    const segLen = segLengths[i];
+    if (traveled + segLen >= target) {
+      const segT = segLen > 0 ? (target - traveled) / segLen : 0;
+      const interpolated = {
+        lat: path[i].lat + (path[i + 1].lat - path[i].lat) * segT,
+        lon: path[i].lon + (path[i + 1].lon - path[i].lon) * segT,
+      };
+      return [interpolated, ...path.slice(i + 1)];
+    }
+    traveled += segLen;
+  }
+  return [path[path.length - 1]];
+}

@@ -34,8 +34,13 @@ export interface MapProps {
   center?: [number, number];
   zoom?: number;
   onMapReady?: () => void;
+  /** LERP-interpolated position — used only to render the bus marker (20 fps). */
   busPosition?: { lat: number; lon: number };
-  busHeading?: number;        // compass bearing 0–360 for heading-up follow mode
+  /**
+   * GPS-rate position — used for camera following (~1 update per 2–3 s).
+   * Kept separate from busPosition so the camera never races with LERP ticks.
+   */
+  cameraTarget?: { lat: number; lon: number };
   userPosition?: { lat: number; lon: number };
   routeSegment?: { lat: number; lon: number }[];
 }
@@ -46,7 +51,7 @@ export default function Map({
   zoom = DEFAULT_ZOOM,
   onMapReady,
   busPosition,
-  busHeading = 0,
+  cameraTarget,
   userPosition,
   routeSegment,
 }: MapProps) {
@@ -54,36 +59,53 @@ export default function Map({
   const { mapStyleUrl } = useMapTheme();
 
   const [cameraMode, setCameraMode] = useState<CameraMode>("follow");
-  // Track current map heading so the compass icon rotates correctly
+  // Ref mirrors state — written synchronously so camera callbacks always see
+  // the current intent without waiting for a React re-render cycle.
+  const cameraModeRef = useRef<CameraMode>("follow");
+
   const [mapHeading, setMapHeading] = useState(0);
   const relockTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapReadyRef = useRef(false);
+
+  // Keep latest values in refs so stable callbacks can read them without
+  // being re-created (and without triggering unwanted effect re-runs).
+  const cameraTargetRef = useRef(cameraTarget);
+  const userPositionRef = useRef(userPosition);
+  useEffect(() => { cameraTargetRef.current = cameraTarget; }, [cameraTarget]);
+  useEffect(() => { userPositionRef.current = userPosition; }, [userPosition]);
 
   const hasBusPos = !!busPosition &&
     (Math.abs(busPosition.lat) > 0.001 || Math.abs(busPosition.lon) > 0.001);
   const hasUserPos = !!userPosition &&
     (Math.abs(userPosition.lat) > 0.001 || Math.abs(userPosition.lon) > 0.001);
 
-  // ── Imperative camera updates ────────────────────────────────────────────
-  const applyCamera = useCallback((mode: CameraMode) => {
+  // ── Mode-transition camera (stable, reads from refs) ─────────────────────
+  // Called ONLY when the camera mode changes (follow ↔ overview ↔ free),
+  // NOT on every position update.  Sets zoom, pitch, heading once per transition.
+  const initializeCamera = useCallback(() => {
     const cam = cameraRef.current;
     if (!cam || !mapReadyRef.current) return;
+    const mode = cameraModeRef.current;
+    if (mode === "free") return;
 
-    if (mode === "free") return; // don't touch camera when user is panning
+    const ct = cameraTargetRef.current;
+    const up = userPositionRef.current;
+    const hasCT = !!ct && (Math.abs(ct.lat) > 0.001 || Math.abs(ct.lon) > 0.001);
+    const hasUP = !!up && (Math.abs(up.lat) > 0.001 || Math.abs(up.lon) > 0.001);
 
     if (mode === "follow") {
-      if (hasBusPos) {
+      if (hasCT) {
         cam.setCamera({
-          centerCoordinate: [busPosition!.lon, busPosition!.lat],
+          centerCoordinate: [ct!.lon, ct!.lat],
           zoomLevel: 16,
-          pitch: 45,
-          heading: busHeading,
+          pitch: 0,
+          heading: 0,
           animationDuration: 600,
           animationMode: "flyTo",
         });
-      } else if (hasUserPos) {
+      } else if (hasUP) {
         cam.setCamera({
-          centerCoordinate: [userPosition!.lon, userPosition!.lat],
+          centerCoordinate: [up!.lon, up!.lat],
           zoomLevel: 15,
           pitch: 0,
           heading: 0,
@@ -95,19 +117,19 @@ export default function Map({
     }
 
     if (mode === "overview") {
-      if (hasBusPos && hasUserPos) {
-        const minLon = Math.min(busPosition!.lon, userPosition!.lon);
-        const maxLon = Math.max(busPosition!.lon, userPosition!.lon);
-        const minLat = Math.min(busPosition!.lat, userPosition!.lat);
-        const maxLat = Math.max(busPosition!.lat, userPosition!.lat);
-        const pad = 0.008; // ~800m padding so markers aren't at the very edge
+      if (hasCT && hasUP) {
+        const minLon = Math.min(ct!.lon, up!.lon);
+        const maxLon = Math.max(ct!.lon, up!.lon);
+        const minLat = Math.min(ct!.lat, up!.lat);
+        const maxLat = Math.max(ct!.lat, up!.lat);
+        const pad = 0.008;
         cam.setCamera({
           bounds: {
             ne: [maxLon + pad, maxLat + pad] as [number, number],
             sw: [minLon - pad, minLat - pad] as [number, number],
             paddingTop: 80,
             paddingRight: 60,
-            paddingBottom: 220, // leave room for bottom sheet
+            paddingBottom: 220,
             paddingLeft: 60,
           },
           pitch: 0,
@@ -116,54 +138,68 @@ export default function Map({
           animationMode: "flyTo",
         });
       } else {
-        // Can't show overview without both points — fall back to follow
+        // No user position yet — fall back to follow
+        cameraModeRef.current = "follow";
         setCameraMode("follow");
       }
     }
-  }, [hasBusPos, hasUserPos, busPosition, userPosition, busHeading]);
+  }, []); // stable
 
-  // Re-apply camera whenever bus moves (but only when locked)
+  // Mode-change effect
   useEffect(() => {
-    applyCamera(cameraMode);
-  }, [cameraMode, busPosition, busHeading, applyCamera]);
+    initializeCamera();
+  }, [cameraMode, initializeCamera]);
 
-  // ── User interaction detection ───────────────────────────────────────────
-  const handleRegionDidChange = useCallback((event: any) => {
-    // MapLibre fires this with properties.isUserInteraction = true for gesture-driven changes
+  // ── GPS-rate position follow ──────────────────────────────────────────────
+  // Fires only when a new GPS frame arrives from the backend (~every 2–3 s).
+  // Uses linearTo so the camera smoothly traverses between GPS positions.
+  // Because this runs at GPS rate (not LERP rate), it never fights gestures.
+  useEffect(() => {
+    if (cameraModeRef.current !== "follow") return;
+    const cam = cameraRef.current;
+    if (!cam || !mapReadyRef.current || !cameraTarget) return;
+    cam.setCamera({
+      centerCoordinate: [cameraTarget.lon, cameraTarget.lat],
+      animationDuration: 2000,
+      animationMode: "linearTo",
+    });
+  }, [cameraTarget]);
+
+  // ── Gesture detection ─────────────────────────────────────────────────────
+  // onRegionWillChange fires at gesture START — we set free mode here so the
+  // next GPS-rate camera update (up to 2–3 s away) won't interrupt the gesture.
+  const handleRegionWillChange = useCallback((event: any) => {
     if (!event?.properties?.isUserInteraction) return;
-
-    // Track current heading for compass rotation
-    const heading = event?.properties?.heading ?? 0;
-    setMapHeading(heading);
-
-    // Switch to free mode and schedule auto-relock
+    cameraModeRef.current = "free";
     setCameraMode("free");
     if (relockTimer.current) clearTimeout(relockTimer.current);
+  }, []);
+
+  // onRegionDidChange fires when camera stops — track heading + start relock.
+  const handleRegionDidChange = useCallback((event: any) => {
+    const heading = event?.properties?.heading ?? 0;
+    setMapHeading(heading);
+    if (!event?.properties?.isUserInteraction) return;
+    if (relockTimer.current) clearTimeout(relockTimer.current);
     relockTimer.current = setTimeout(() => {
+      cameraModeRef.current = "follow";
       setCameraMode("follow");
     }, FREE_RELOCK_MS);
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (relockTimer.current) clearTimeout(relockTimer.current);
-    };
+    return () => { if (relockTimer.current) clearTimeout(relockTimer.current); };
   }, []);
 
-  // ── Compass / mode button ────────────────────────────────────────────────
+  // ── Compass / mode toggle ────────────────────────────────────────────────
   const handleCompassPress = useCallback(() => {
     if (relockTimer.current) clearTimeout(relockTimer.current);
+    const next: CameraMode = cameraModeRef.current === "follow" ? "overview" : "follow";
+    cameraModeRef.current = next;
+    setCameraMode(next);
+    initializeCamera();
+  }, [initializeCamera]);
 
-    if (cameraMode === "follow") {
-      // Switch to overview so the user can see both bus and their stop
-      setCameraMode("overview");
-    } else {
-      // Re-lock to follow (bus navigation mode)
-      setCameraMode("follow");
-    }
-  }, [cameraMode]);
-
-  // Compass icon + label based on mode
   const compassIcon = cameraMode === "follow" ? "compass" : "crosshairs-gps";
   const compassActive = cameraMode !== "follow";
 
@@ -199,26 +235,26 @@ export default function Map({
         mapStyle={mapStyleUrl}
         logoEnabled={false}
         attributionEnabled={false}
-        compassEnabled={false}   // we render our own compass button
+        compassEnabled={false}
         onDidFinishLoadingMap={() => {
           mapReadyRef.current = true;
-          applyCamera(cameraMode);
+          initializeCamera();
           onMapReady?.();
         }}
+        onRegionWillChange={handleRegionWillChange}
         onRegionDidChange={handleRegionDidChange}
       >
-        {/* Camera — default settings only; all subsequent moves are imperative */}
         <Camera
           ref={cameraRef}
           defaultSettings={{
-            centerCoordinate: hasBusPos
-              ? [busPosition!.lon, busPosition!.lat]
+            centerCoordinate: cameraTarget
+              ? [cameraTarget.lon, cameraTarget.lat]
               : hasUserPos
                 ? [userPosition!.lon, userPosition!.lat]
                 : center,
-            zoomLevel: hasBusPos ? 16 : hasUserPos ? 15 : zoom,
-            pitch: hasBusPos ? 45 : 0,
-            heading: hasBusPos ? busHeading : 0,
+            zoomLevel: cameraTarget ? 16 : hasUserPos ? 15 : zoom,
+            pitch: 0,
+            heading: 0,
           }}
           minZoomLevel={MIN_ZOOM}
           maxZoomLevel={MAX_ZOOM}
@@ -251,7 +287,7 @@ export default function Map({
           </ShapeSource>
         )}
 
-        {/* Bus marker */}
+        {/* Bus marker — rendered at LERP position for smooth animation */}
         {hasBusPos && (
           <MarkerView
             coordinate={[busPosition!.lon, busPosition!.lat]}
@@ -276,13 +312,12 @@ export default function Map({
         )}
       </MapView>
 
-      {/* Compass / mode button — top-right, clear of status bar */}
+      {/* Compass / mode button */}
       <Pressable
         style={[styles.compassBtn, compassActive && styles.compassBtnActive]}
         onPress={handleCompassPress}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        {/* Compass needle rotates to show current map north */}
         <View style={{ transform: [{ rotate: `${-mapHeading}deg` }] }}>
           <MaterialCommunityIcons
             name={compassIcon}

@@ -98,7 +98,6 @@ export class BusMuxClient {
   private intentionalClose = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = 1_000;
-  private pingTimer: ReturnType<typeof setInterval> | null = null;
 
   // Active subscriptions keyed by stream name — re-sent on reconnect
   private activeSubs = new Map<string, object>();
@@ -121,7 +120,6 @@ export class BusMuxClient {
   disconnect(): void {
     this.intentionalClose = true;
     this._clearReconnect();
-    this._stopPing();
     this.ws?.close();
     this.ws = null;
   }
@@ -185,7 +183,6 @@ export class BusMuxClient {
     ws.onopen = () => {
       console.log('[busMux] socket open, sending', this.activeSubs.size, 'pending subs');
       this.reconnectDelay = 1_000;
-      this._startPing();
       // Re-subscribe all active subscriptions after reconnect
       for (const frame of this.activeSubs.values()) {
         ws.send(JSON.stringify(frame));
@@ -205,7 +202,6 @@ export class BusMuxClient {
 
     ws.onclose = (evt) => {
       console.log('[busMux] socket closed — code:', evt.code, 'reason:', evt.reason);
-      this._stopPing();
       this.disconnectHandlers.forEach(h => h());
       if (!this.intentionalClose) {
         this._scheduleReconnect();
@@ -264,20 +260,6 @@ export class BusMuxClient {
   private _send(data: object): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
-    }
-  }
-
-  private _startPing(): void {
-    this._stopPing();
-    this.pingTimer = setInterval(() => {
-      this._send({ type: 'ping' });
-    }, 30_000);
-  }
-
-  private _stopPing(): void {
-    if (this.pingTimer !== null) {
-      clearInterval(this.pingTimer);
-      this.pingTimer = null;
     }
   }
 

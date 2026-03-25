@@ -39,6 +39,7 @@ import { fetchRouteStops, type RouteStop } from "@/services/api/stops";
 import { busMuxClient } from "@/services/ws/busMuxClient";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import { useBusPosition } from "@/hooks/useBusPosition";
+import { pathAfterFraction, roadPosition } from "@/utils/routeGeometry";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 /* ───────────── theme ───────────── */
@@ -312,6 +313,11 @@ export default function JourneyScreen() {
   const activeBusId = recommendations[0]?.activeBusId ?? null;
   const { displayPos, latestBus } = useBusPosition(activeBusId, routeStops);
 
+  // Keep latestBus in a ref so the routeSegment effect can read fractionalIndex
+  // without being in its dependency array (avoids rebuilding polyline every WS frame)
+  const latestBusRef = useRef(latestBus);
+  useEffect(() => { latestBusRef.current = latestBus; }, [latestBus]);
+
   /* ── One-time initial HTTP fetch so map/stops render before first WS frame ── */
   useEffect(() => {
     if (!activeBusId) return;
@@ -364,31 +370,28 @@ export default function JourneyScreen() {
         setUserStopName(userStop?.name ?? null);
         console.log("[journey] user stop name:", userStop?.name, "id:", originStopId);
 
-        // Build road-following polyline: bus GPS → pathToNext segments → user boarding stop.
-        // Only draw when bus is still BEFORE the boarding stop (seq-ascending = outbound forward).
-        // If the bus has already passed (busStop.seq > userStop.seq on outbound, or < on inbound),
-        // clear the polyline — drawing it backward would be misleading.
-        const pos = busDetails.position;
+        // Build road-following polyline from the bus's current road position → user stop.
+        // Start from the road-snapped position (not raw GPS) so the polyline always
+        // begins exactly where the bus marker sits, with no backward kink.
         const busHasPassed = busStop && userStop && busStop.seq > userStop.seq;
         if (busHasPassed) {
           setRouteSegment(undefined);
-        } else if (busStop && userStop && pos && (Math.abs(pos.lat) > 0.001 || Math.abs(pos.lon) > 0.001)) {
-          const coords: { lat: number; lon: number }[] = [{ lat: pos.lat, lon: pos.lon }];
+        } else if (busStop && userStop) {
+          const frac = Math.max(0, Math.min(1, latestBusRef.current?.FractionalIndex ?? 0));
 
-          // For the bus's current stop segment (busStop → busStop+1), include only the
-          // portion of pathToNext that is AHEAD of the bus's GPS position. We find the
-          // closest point in that segment to the bus and take everything after it,
-          // avoiding any backward kink while preserving road geometry.
+          // Road-snapped start = exact marker position on the polyline
+          const snappedStart = roadPosition(stops, busStop.seq, frac);
+          const coords: { lat: number; lon: number }[] = snappedStart
+            ? [snappedStart]
+            : [{ lat: busDetails.position?.lat ?? busStop.lat, lon: busDetails.position?.lon ?? busStop.lon }];
+
+          // Current segment: remaining pathToNext after the fraction
           const busPathToNext = busStop.pathToNext ?? [];
           if (busPathToNext.length > 0) {
-            let minDist = Infinity;
-            let splitIdx = 0;
-            for (let i = 0; i < busPathToNext.length; i++) {
-              const p = busPathToNext[i];
-              const d = Math.hypot(p.lat - pos.lat, p.lon - pos.lon);
-              if (d < minDist) { minDist = d; splitIdx = i; }
-            }
-            coords.push(...busPathToNext.slice(splitIdx + 1));
+            // pathAfterFraction returns an array starting with the interpolated point
+            // at fraction t — skip that first point since snappedStart already has it.
+            const remaining = pathAfterFraction(busPathToNext, frac);
+            coords.push(...remaining.slice(1));
           }
 
           // Subsequent stops: include full pathToNext road geometry
@@ -406,7 +409,10 @@ export default function JourneyScreen() {
         }
       }
     });
-  }, [busDetails?.routeId, busDetails?.stopIndex, busDetails?.position?.lat, busDetails?.position?.lon, recommendations[0]?.originStopId]);
+  // NOTE: position.lat/lon intentionally excluded — the polyline start is now computed
+  // from roadPosition(stopIndex, fractional) not raw GPS, so we only need to rebuild
+  // when the bus passes a new stop (stopIndex changes) or the destination changes.
+  }, [busDetails?.routeId, busDetails?.stopIndex, recommendations[0]?.originStopId]);
 
   const snapTo = useCallback(
     (target: number) => {
@@ -520,17 +526,38 @@ export default function JourneyScreen() {
     translateY.value = withSpring(TY_MID, SPRING_CFG);
   };
 
-  /* ── Map positions: only active while tracking (cleared on end) ── */
-  const userPosition = hasRecommendations && params.originLat && params.originLon
-    ? { lat: parseFloat(params.originLat), lon: parseFloat(params.originLon) }
-    : undefined;
+  /* ── Map positions ── */
+  // userPosition: prefer nav params (new journey); fall back to route stop coords
+  // (restored journey where params are absent) so overview/compass always works.
+  const originStopId = recommendations[0]?.originStopId;
+  const userPosition = useMemo(() => {
+    if (!hasRecommendations) return undefined;
+    if (params.originLat && params.originLon) {
+      return { lat: parseFloat(params.originLat), lon: parseFloat(params.originLon) };
+    }
+    if (originStopId && routeStops) {
+      const stop = routeStops.find((s) => s.id === originStopId);
+      if (stop) return { lat: stop.lat, lon: stop.lon };
+    }
+    return undefined;
+  }, [hasRecommendations, params.originLat, params.originLon, originStopId, routeStops]);
 
-  // Use interpolated position for the map marker (smooth 20fps movement).
-  // Fall back to raw busDetails position if WS hasn't delivered a frame yet.
-  const busPosition = displayPos
-    ?? (busDetails?.position
-      ? { lat: busDetails.position.lat, lon: busDetails.position.lon }
-      : undefined);
+  // Only use the LERP-interpolated WS position for the marker.
+  // No HTTP pre-fetch fallback — marker stays hidden until the first WS frame
+  // arrives so the user never sees the bus jump from a stale HTTP position.
+  const busPosition = displayPos ?? undefined;
+
+  // Camera target: snapped road position from the latest WS frame (~every 2–3 s).
+  // Intentionally NOT the LERP position — camera follows at GPS rate so it never
+  // fights user pinch/pan gestures (which fire much faster than GPS updates).
+  const cameraTarget = useMemo(() => {
+    if (!latestBus) return undefined;
+    const frac = Math.max(0, Math.min(1, latestBus.FractionalIndex));
+    const snapped = routeStops && routeStops.length >= 2
+      ? roadPosition(routeStops, latestBus.StopIndex, frac)
+      : null;
+    return snapped ?? { lat: latestBus.Position.Lat, lon: latestBus.Position.Lon };
+  }, [latestBus, routeStops]);
 
   /* ── Navigation banner data ── */
   const navBanner = useMemo(() => {
@@ -634,7 +661,7 @@ export default function JourneyScreen() {
     <GestureHandlerRootView style={styles.container}>
       <StatusBar style="light" />
 
-      <Map busPosition={busPosition} busHeading={latestBus?.Heading ?? 0} userPosition={userPosition} routeSegment={routeSegment} />
+      <Map busPosition={busPosition} cameraTarget={cameraTarget} userPosition={userPosition} routeSegment={routeSegment} />
       <View style={styles.mapOverlay} pointerEvents="none" />
 
       {/* ── Navigation banner ── */}

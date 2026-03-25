@@ -7,8 +7,8 @@ import {
   MarkerView,
   ShapeSource,
 } from "@maplibre/maplibre-react-native";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, StyleSheet, View } from "react-native";
+import React, { useMemo, useRef } from "react";
+import { StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { useMapTheme } from "@/contexts/MapThemeContext";
@@ -25,8 +25,6 @@ const MIN_ZOOM = 9;
 const MAX_ZOOM = 16;
 
 const ACCENT = "#c1ec72";
-// Duration for the dot to travel the full line once (ms)
-const DOT_DURATION_MS = 3500;
 
 export interface MapProps {
   style?: object;
@@ -63,8 +61,6 @@ export default function Map({
 
   const cameraZoom = hasBusPos ? 15 : zoom;
 
-  // Memoise so lineCoords reference is stable — animation effect only re-fires when
-  // the actual segment changes, not on unrelated re-renders.
   const lineCoords = useMemo<[number, number][]>(
     () =>
       routeSegment && routeSegment.length >= 2
@@ -92,70 +88,6 @@ export default function Map({
     }),
     [lineCoords],
   );
-
-  // ── Animated dot ──────────────────────────────────────────────────────────
-  // Pre-compute cumulative arc lengths (in degree space — good enough for
-  // interpolation; we only need relative proportions).
-  const segmentData = useMemo(() => {
-    if (lineCoords.length < 2) return null;
-    let total = 0;
-    const cum: number[] = [0];
-    for (let i = 1; i < lineCoords.length; i++) {
-      const dx = lineCoords[i][0] - lineCoords[i - 1][0];
-      const dy = lineCoords[i][1] - lineCoords[i - 1][1];
-      total += Math.sqrt(dx * dx + dy * dy);
-      cum.push(total);
-    }
-    return { total, cum };
-  }, [lineCoords]);
-
-  const dotProgress = useRef(new Animated.Value(0)).current;
-  const animRef = useRef<Animated.CompositeAnimation | null>(null);
-  const [dotCoord, setDotCoord] = useState<[number, number] | null>(null);
-
-  useEffect(() => {
-    // Stop any running animation and clear the dot when the line is gone or too short.
-    if (!segmentData || lineCoords.length < 2) {
-      if (animRef.current) {
-        animRef.current.stop();
-        animRef.current = null;
-      }
-      setDotCoord(null);
-      return;
-    }
-
-    const { total, cum } = segmentData;
-    dotProgress.setValue(0);
-
-    // On every animation tick, interpolate position along the polyline.
-    const listenerId = dotProgress.addListener(({ value }) => {
-      const dist = value * total;
-      let i = 0;
-      while (i < cum.length - 2 && dist > cum[i + 1]) i++;
-      const segLen = cum[i + 1] - cum[i];
-      const t = segLen === 0 ? 0 : (dist - cum[i]) / segLen;
-      const lon = lineCoords[i][0] + t * (lineCoords[i + 1][0] - lineCoords[i][0]);
-      const lat = lineCoords[i][1] + t * (lineCoords[i + 1][1] - lineCoords[i][1]);
-      setDotCoord([lon, lat]);
-    });
-
-    const anim = Animated.loop(
-      Animated.timing(dotProgress, {
-        toValue: 1,
-        duration: DOT_DURATION_MS,
-        easing: Easing.linear,
-        useNativeDriver: false, // must be false — drives JS-side interpolation
-      }),
-    );
-    animRef.current = anim;
-    anim.start();
-
-    return () => {
-      anim.stop();
-      dotProgress.removeListener(listenerId);
-      animRef.current = null;
-    };
-  }, [segmentData]);
 
   return (
     <View style={[StyleSheet.absoluteFillObject, style]}>
@@ -211,16 +143,6 @@ export default function Map({
           </ShapeSource>
         )}
 
-        {/* Animated dot travelling along the route line */}
-        {dotCoord && lineCoords.length >= 2 && (
-          <MarkerView
-            coordinate={dotCoord}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <View style={styles.routeDot} />
-          </MarkerView>
-        )}
-
         {/* Bus marker */}
         {hasBusPos && (
           <MarkerView
@@ -233,14 +155,14 @@ export default function Map({
           </MarkerView>
         )}
 
-        {/* User / origin marker */}
+        {/* User / origin marker — flag milestone */}
         {hasUserPos && (
           <MarkerView
             coordinate={[userPosition!.lon, userPosition!.lat]}
-            anchor={{ x: 0.5, y: 0.5 }}
+            anchor={{ x: 0.15, y: 1.0 }}
           >
             <View style={styles.userMarker}>
-              <View style={styles.userDot} />
+              <MaterialCommunityIcons name="flag-variant" size={22} color={ACCENT} />
             </View>
           </MarkerView>
         )}
@@ -264,29 +186,7 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   userMarker: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.25)",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#fff",
-  },
-  userDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#fff",
-  },
-  // Animated travelling dot — dark fill with accent border so it reads clearly
-  // against the glowing line underneath.
-  routeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#0d0d0d",
-    borderWidth: 2.5,
-    borderColor: ACCENT,
   },
 });

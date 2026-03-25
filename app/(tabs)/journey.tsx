@@ -33,10 +33,12 @@ import ShortcutsSection, {
   type Shortcut,
 } from "@/components/journey/ShortcutsSection";
 import { useAuth } from "@/contexts/AuthContext";
-import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
-import { cancelJourney, createJourney, loadActiveJourneys, refreshJourney, type CreateJourneyResponse } from "@/services/api/journey";
+import { type BusDetailsDTO } from "@/services/api/buses";
+import { cancelJourney, createJourney, loadActiveJourneys, type CreateJourneyResponse } from "@/services/api/journey";
 import { fetchRouteStops } from "@/services/api/stops";
+import { busMuxClient } from "@/services/ws/busMuxClient";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
+import { useBusPosition } from "@/hooks/useBusPosition";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 /* ───────────── theme ───────────── */
@@ -260,57 +262,71 @@ export default function JourneyScreen() {
     run();
   }, [params.originLat, params.originLon, params.destStopId, params.ts]);
 
-  /* ── Poll journey refresh: computes live proximity from Redis (every 15s) ── */
+  /* ── WebSocket: connect/disconnect lifecycle tied to journeyId ── */
   useEffect(() => {
     if (!journeyId) return;
 
-    const poll = async () => {
-      try {
-        const resp = await refreshJourney(journeyId);
-        const proximityName = proximityLevelToName(resp.proximityLevel);
-        console.log("[journey] refresh poll — proximityLevel:", resp.proximityLevel, "→", proximityName);
-        setRecommendations((prev) => {
-          if (prev.length === 0) return prev;
-          const next = [...prev];
-          next[0] = {
-            ...next[0],
-            proximityName,
-            proximityLevel: resp.proximityLevel,
-            recommendations: resp.recommendations.length > 0
-              ? resp.recommendations
-              : next[0].recommendations,
-          };
-          return next;
-        });
-      } catch (e: any) {
-        console.warn("[journey] refresh poll failed:", e?.message ?? e);
-      }
-    };
+    busMuxClient.connect()
+      .then(() => busMuxClient.subscribeJourney(journeyId))
+      .catch((e: any) => console.warn("[journey] WS connect failed:", e?.message ?? e));
 
-    poll(); // immediate first fetch
-    const id = setInterval(poll, 15_000);
-    return () => clearInterval(id);
+    return () => {
+      busMuxClient.disconnect();
+    };
   }, [journeyId]);
 
-  /* ── Poll bus details for position + stopIndex + operatorId (every 10s) ── */
+  /* ── WebSocket: journey.update → proximity + recommendations ── */
   useEffect(() => {
-    const activeBusId = recommendations[0]?.activeBusId;
-    if (!activeBusId) return;
+    if (!journeyId) return;
 
-    const poll = async () => {
-      try {
-        const details = await getBusDetails(activeBusId);
-        console.log("[journey] bus poll — stopIndex:", details.stopIndex, "pos:", details.position.lat, details.position.lon);
-        setBusDetails(details);
-      } catch (e: any) {
-        console.warn("[journey] bus details fetch failed:", e?.message ?? e);
-      }
-    };
+    const off = busMuxClient.onJourneyUpdate((frame) => {
+      if (frame.journey.journeyId !== journeyId) return;
+      const j = frame.journey;
+      const proximityName = j.proximityName || proximityLevelToName(j.proximityLevel ?? 0);
+      console.log("[journey] WS journey.update — proximityLevel:", j.proximityLevel, "→", proximityName);
+      setRecommendations((prev) => {
+        if (prev.length === 0) return prev;
+        const next = [...prev];
+        next[0] = {
+          ...next[0],
+          proximityName,
+          proximityLevel: j.proximityLevel,
+          recommendations: j.recommendations?.length > 0
+            ? j.recommendations
+            : next[0].recommendations,
+          activeBusId: j.activeBusId ?? next[0].activeBusId,
+        };
+        return next;
+      });
+    });
 
-    poll(); // immediate first fetch
-    const id = setInterval(poll, 10_000);
-    return () => clearInterval(id);
-  }, [recommendations[0]?.activeBusId]);
+    return off;
+  }, [journeyId]);
+
+  /* ── Smooth bus position via WS (replaces 10s HTTP poll) ── */
+  const activeBusId = recommendations[0]?.activeBusId ?? null;
+  const { displayPos, latestBus } = useBusPosition(activeBusId);
+
+  /* ── Sync latestBus → busDetails for route segment computation ── */
+  useEffect(() => {
+    if (!latestBus) return;
+    console.log("[journey] WS bus.update — stopIndex:", latestBus.StopIndex, "pos:", latestBus.Position.Lat, latestBus.Position.Lon);
+    setBusDetails({
+      busId: latestBus.BusID,
+      operatorId: latestBus.OperatorID,
+      routeId: latestBus.RouteID,
+      direction: latestBus.Direction === 0 ? "outbound" : "inbound",
+      status: latestBus.Status === 0 ? "active" : "inactive",
+      stopIndex: latestBus.StopIndex,
+      isAtTerminal: latestBus.IsAtTerminal,
+      position: {
+        lat: latestBus.Position.Lat,
+        lon: latestBus.Position.Lon,
+        speedKmh: latestBus.Position.SpeedKmh,
+      },
+      updatedAt: latestBus.UpdatedAt,
+    });
+  }, [latestBus]);
 
   /* ── Resolve stop names + road polyline from route stops ── */
   useEffect(() => {
@@ -339,10 +355,24 @@ export default function JourneyScreen() {
           setRouteSegment(undefined);
         } else if (busStop && userStop && pos && (Math.abs(pos.lat) > 0.001 || Math.abs(pos.lon) > 0.001)) {
           const coords: { lat: number; lon: number }[] = [{ lat: pos.lat, lon: pos.lon }];
-          // Start from busStop.seq + 1: the bus is already somewhere within the segment
-          // busStop → busStop+1, so busStop's pathToNext anchors behind the bus's GPS and
-          // would produce a backward kink. We skip it and let the bus GPS be the raw
-          // start point, picking up road geometry from the following stop onward.
+
+          // For the bus's current stop segment (busStop → busStop+1), include only the
+          // portion of pathToNext that is AHEAD of the bus's GPS position. We find the
+          // closest point in that segment to the bus and take everything after it,
+          // avoiding any backward kink while preserving road geometry.
+          const busPathToNext = busStop.pathToNext ?? [];
+          if (busPathToNext.length > 0) {
+            let minDist = Infinity;
+            let splitIdx = 0;
+            for (let i = 0; i < busPathToNext.length; i++) {
+              const p = busPathToNext[i];
+              const d = Math.hypot(p.lat - pos.lat, p.lon - pos.lon);
+              if (d < minDist) { minDist = d; splitIdx = i; }
+            }
+            coords.push(...busPathToNext.slice(splitIdx + 1));
+          }
+
+          // Subsequent stops: include full pathToNext road geometry
           for (let seq = busStop.seq + 1; seq < userStop.seq; seq++) {
             const seg = stops.find((s) => s.seq === seq);
             if (seg?.pathToNext?.length) {
@@ -476,9 +506,12 @@ export default function JourneyScreen() {
     ? { lat: parseFloat(params.originLat), lon: parseFloat(params.originLon) }
     : undefined;
 
-  const busPosition = busDetails?.position
-    ? { lat: busDetails.position.lat, lon: busDetails.position.lon }
-    : undefined;
+  // Use interpolated position for the map marker (smooth 20fps movement).
+  // Fall back to raw busDetails position if WS hasn't delivered a frame yet.
+  const busPosition = displayPos
+    ?? (busDetails?.position
+      ? { lat: busDetails.position.lat, lon: busDetails.position.lon }
+      : undefined);
 
   /* ── Sheet content ── */
   const renderSheetContent = () => {

@@ -41,7 +41,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 /* ───────────── theme (same as journey/index) ───────────── */
 const { height: SCREEN_H } = Dimensions.get("window");
 const ACCENT = "#c1ec72";
-const BG = "#FFFFFF";
+const BG = "#212122";
 const SHEET_BG = "#0E0E10";
 const SURFACE = "#151518";
 const TEXT_PRIMARY = "#FFFFFF";
@@ -162,7 +162,7 @@ const socialStyles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -398,7 +398,7 @@ export default function SettingsScreen() {
     <GestureHandlerRootView style={styles.container}>
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <View style={styles.container}>
-          <StatusBar style="dark" />
+          <StatusBar style="light" />
 
           {/* Profile Header Area (above sheet) */}
           <View style={[styles.profileArea, { paddingTop: insets.top + 16 }]}>
@@ -407,7 +407,7 @@ export default function SettingsScreen() {
               <MaterialCommunityIcons
                 name="chevron-left"
                 size={28}
-                color="#1a1a1a"
+                color="#FFFFFF"
               />
             </Pressable>
 
@@ -416,7 +416,7 @@ export default function SettingsScreen() {
               <MaterialCommunityIcons
                 name="dots-vertical"
                 size={24}
-                color="#1a1a1a"
+                color="#FFFFFF"
               />
             </Pressable>
 
@@ -610,11 +610,11 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: "#2C2C2E",
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 3,
-    borderColor: "#e0e0e0",
+    borderColor: "rgba(255,255,255,0.15)",
     overflow: "hidden",
   },
   avatarImage: {
@@ -624,12 +624,12 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#1a1a1a",
+    color: "#FFFFFF",
     marginBottom: 4,
   },
   userEmail: {
     fontSize: 14,
-    color: "#666",
+    color: "rgba(255,255,255,0.6)",
     marginBottom: 20,
   },
   socialRow: {

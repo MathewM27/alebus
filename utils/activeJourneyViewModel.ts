@@ -30,9 +30,19 @@ export function toActiveJourneyCardModel(
 
   const busPlate = journey.activeBusId ?? activeRec?.busId ?? "—";
 
+  // When the bus stop and user boarding stop resolve to the same name, the bus has
+  // just passed (or is exactly at) the boarding stop. Prefix with "Passed" so the
+  // two labels are distinguishable and the user understands the bus is moving away.
+  const resolvedBusStopName = busStopName ?? (busDetails ? (busDetails.isAtTerminal ? "Terminal" : `Stop ${busDetails.stopIndex}`) : "—");
+  const resolvedUserStopName = userStopName ?? "—";
+  const busStopLabel =
+    resolvedBusStopName !== "—" && resolvedBusStopName === resolvedUserStopName
+      ? `Passed ${resolvedBusStopName}`
+      : resolvedBusStopName;
+
   return {
-    busStopName: busStopName ?? (busDetails ? (busDetails.isAtTerminal ? "Terminal" : `Stop ${busDetails.stopIndex}`) : "—"),
-    userStopName: userStopName ?? "—",
+    busStopName: busStopLabel,
+    userStopName: resolvedUserStopName,
     busPlateLabel: busPlate !== "—" ? `Bus ${busPlate}` : "Bus —",
     distanceText: formatDistance(activeRec?.distanceMeters),
     etaText: formatEta(activeRec?.estimatedArrival),

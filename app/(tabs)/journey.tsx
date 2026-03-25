@@ -329,11 +329,21 @@ export default function JourneyScreen() {
         setUserStopName(userStop?.name ?? null);
         console.log("[journey] user stop name:", userStop?.name, "id:", originStopId);
 
-        // Build road-following polyline: bus GPS → pathToNext segments → user boarding stop
+        // Build road-following polyline: bus GPS → pathToNext segments → user boarding stop.
+        // Only draw when bus is still BEFORE the boarding stop (seq-ascending = outbound forward).
+        // If the bus has already passed (busStop.seq > userStop.seq on outbound, or < on inbound),
+        // clear the polyline — drawing it backward would be misleading.
         const pos = busDetails.position;
-        if (busStop && userStop && pos && (Math.abs(pos.lat) > 0.001 || Math.abs(pos.lon) > 0.001)) {
+        const busHasPassed = busStop && userStop && busStop.seq > userStop.seq;
+        if (busHasPassed) {
+          setRouteSegment(undefined);
+        } else if (busStop && userStop && pos && (Math.abs(pos.lat) > 0.001 || Math.abs(pos.lon) > 0.001)) {
           const coords: { lat: number; lon: number }[] = [{ lat: pos.lat, lon: pos.lon }];
-          for (let seq = busStop.seq; seq < userStop.seq; seq++) {
+          // Start from busStop.seq + 1: the bus is already somewhere within the segment
+          // busStop → busStop+1, so busStop's pathToNext anchors behind the bus's GPS and
+          // would produce a backward kink. We skip it and let the bus GPS be the raw
+          // start point, picking up road geometry from the following stop onward.
+          for (let seq = busStop.seq + 1; seq < userStop.seq; seq++) {
             const seg = stops.find((s) => s.seq === seq);
             if (seg?.pathToNext?.length) {
               coords.push(...seg.pathToNext);

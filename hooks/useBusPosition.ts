@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { busMuxClient, type WsBusDTO } from '@/services/ws/busMuxClient';
+import type { RouteStop } from '@/services/api/stops';
+import { roadPosition } from '@/utils/routeGeometry';
 
 // Interpolation window in ms — covers roughly one GPS publish cycle (~2–3 s).
 // Keeping it at 3 s means the marker always has somewhere to move to, producing
@@ -25,10 +27,17 @@ export interface DisplayPosition {
  * a smoothly interpolated display position (LERP at 20 fps) plus the latest
  * raw bus data for metadata (stopIndex, routeId, etc.).
  *
+ * When routeStops are provided, the LERP target is road-snapped using
+ * stopIndex + fractionalIndex so the marker stays on the road rather than
+ * drifting to raw GPS coordinates.
+ *
  * Usage:
- *   const { displayPos, latestBus } = useBusPosition(activeBusId);
+ *   const { displayPos, latestBus } = useBusPosition(activeBusId, routeStops);
  */
-export function useBusPosition(busId: string | null): {
+export function useBusPosition(
+  busId: string | null,
+  routeStops?: RouteStop[] | null,
+): {
   displayPos: DisplayPosition | null;
   latestBus: WsBusDTO | null;
 } {
@@ -43,6 +52,13 @@ export function useBusPosition(busId: string | null): {
     current: DisplayPosition | null; // last value pushed to state
     startTime: number;
   }>({ from: null, to: null, current: null, startTime: 0 });
+
+  // Keep latest routeStops in a ref so the WS callback always sees the
+  // current value without needing to re-subscribe when stops load.
+  const routeStopsRef = useRef<RouteStop[] | null | undefined>(routeStops);
+  useEffect(() => {
+    routeStopsRef.current = routeStops;
+  }, [routeStops]);
 
   // ── Interpolation ticker ──────────────────────────────────────────────────
   useEffect(() => {
@@ -76,18 +92,33 @@ export function useBusPosition(busId: string | null): {
 
     const off = busMuxClient.onBusUpdate((frame) => {
       // The mux may carry updates for other buses; filter to the one we care about.
+      console.log("[useBusPosition] bus.update received — frame busId:", frame.bus.BusID, "watching:", busId);
       if (frame.bus.BusID !== busId) return;
 
       const bus = frame.bus;
+      console.log("[useBusPosition] matched — stopIndex:", bus.StopIndex, "fractional:", bus.FractionalIndex, "routeStops:", routeStopsRef.current?.length ?? "null");
       setLatestBus(bus);
 
-      // Start a new LERP from wherever the marker is right now → new GPS fix.
+      // Compute road-snapped target when route geometry is available.
+      // Fall back to raw GPS if snapping returns null (e.g. first frame before stops load).
+      const stops = routeStopsRef.current;
+      const snapped =
+        stops && stops.length >= 2
+          ? roadPosition(stops, bus.StopIndex, bus.FractionalIndex)
+          : null;
+      const target: DisplayPosition = snapped ?? {
+        lat: bus.Position.Lat,
+        lon: bus.Position.Lon,
+      };
+      console.log("[useBusPosition] snapped:", snapped ? `${snapped.lat.toFixed(5)},${snapped.lon.toFixed(5)}` : "null (raw GPS fallback)");
+
+      // Start a new LERP from wherever the marker is right now → snapped road position.
       const s = lerpRef.current;
       lerpRef.current = {
-        // If we have a current displayed position use it; otherwise snap to the
-        // raw GPS immediately (first frame after subscription).
-        from: s.current ?? { lat: bus.Position.Lat, lon: bus.Position.Lon },
-        to: { lat: bus.Position.Lat, lon: bus.Position.Lon },
+        // If we have a current displayed position use it; otherwise snap immediately
+        // (first frame after subscription — no animation needed).
+        from: s.current ?? target,
+        to:   target,
         current: s.current,
         startTime: Date.now(),
       };

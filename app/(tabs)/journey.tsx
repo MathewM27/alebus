@@ -1,7 +1,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -35,7 +35,7 @@ import ShortcutsSection, {
 import { useAuth } from "@/contexts/AuthContext";
 import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
 import { cancelJourney, createJourney, loadActiveJourneys, type CreateJourneyResponse } from "@/services/api/journey";
-import { fetchRouteStops } from "@/services/api/stops";
+import { fetchRouteStops, type RouteStop } from "@/services/api/stops";
 import { busMuxClient } from "@/services/ws/busMuxClient";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import { useBusPosition } from "@/hooks/useBusPosition";
@@ -118,6 +118,7 @@ export default function JourneyScreen() {
   const [busStopName, setBusStopName] = useState<string | null>(null);
   const [userStopName, setUserStopName] = useState<string | null>(null);
   const [routeSegment, setRouteSegment] = useState<{ lat: number; lon: number }[] | undefined>(undefined);
+  const [routeStops, setRouteStops] = useState<RouteStop[] | null>(null);
 
   /* ── Shortcuts state ── */
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS);
@@ -267,8 +268,12 @@ export default function JourneyScreen() {
     if (!journeyId) return;
 
     busMuxClient.connect()
-      .then(() => busMuxClient.subscribeJourney(journeyId))
-      .catch((e: any) => console.warn("[journey] WS connect failed:", e?.message ?? e));
+      .then(() => {
+        console.log("[journey] WS connected OK, subscribing to journeyId:", journeyId);
+        return busMuxClient.subscribeJourney(journeyId);
+      })
+      .then((subId) => console.log("[journey] WS subscribed, subId:", subId))
+      .catch((e: any) => console.warn("[journey] WS connect/subscribe failed:", e?.message ?? e));
 
     return () => {
       busMuxClient.disconnect();
@@ -305,7 +310,7 @@ export default function JourneyScreen() {
 
   /* ── Smooth bus position via WS (replaces 10s HTTP poll) ── */
   const activeBusId = recommendations[0]?.activeBusId ?? null;
-  const { displayPos, latestBus } = useBusPosition(activeBusId);
+  const { displayPos, latestBus } = useBusPosition(activeBusId, routeStops);
 
   /* ── One-time initial HTTP fetch so map/stops render before first WS frame ── */
   useEffect(() => {
@@ -345,6 +350,9 @@ export default function JourneyScreen() {
     const originStopId = recommendations[0]?.originStopId;
 
     fetchRouteStops(busDetails.routeId).then((stops) => {
+      console.log("[journey] setRouteStops — count:", stops.length, "routeId:", busDetails.routeId);
+      setRouteStops(stops);
+
       // Bus current stop name
       const busStop = stops.find((s) => s.seq === busDetails.stopIndex);
       setBusStopName(busStop?.name ?? null);
@@ -524,6 +532,43 @@ export default function JourneyScreen() {
       ? { lat: busDetails.position.lat, lon: busDetails.position.lon }
       : undefined);
 
+  /* ── Navigation banner data ── */
+  const navBanner = useMemo(() => {
+    console.log("[banner] latestBus:", latestBus?.BusID ?? "null", "routeStops:", routeStops?.length ?? "null");
+    if (!latestBus || !routeStops || routeStops.length === 0) return null;
+
+    const sorted = [...routeStops].sort((a, b) => a.seq - b.seq);
+    const currentStop = sorted.find((s) => s.seq === latestBus.StopIndex);
+    const nextStop    = sorted.find((s) => s.seq === latestBus.StopIndex + 1);
+
+    // "At stop" when fractional is very low (just arrived / dwelling)
+    const isAtStop = latestBus.FractionalIndex < 0.08;
+
+    let statusText: string;
+    if (latestBus.IsAtTerminal) {
+      statusText = `At ${currentStop?.name ?? "Terminal"}`;
+    } else if (isAtStop && currentStop) {
+      statusText = `At ${currentStop.name}`;
+    } else if (nextStop) {
+      statusText = `Towards ${nextStop.name}`;
+    } else {
+      statusText = currentStop ? `From ${currentStop.name}` : "In transit";
+    }
+
+    // Compact distance to user's boarding stop (no "away" suffix)
+    const distM = recommendations[0]?.recommendations?.[0]?.distanceMeters;
+    let distText = "";
+    if (distM != null && !Number.isNaN(distM) && distM > 0) {
+      const m = Math.max(0, distM);
+      distText =
+        m < 1000
+          ? `${Math.round(m / 10) * 10} m`
+          : `${Math.round((m / 1000) * 10) / 10} km`;
+    }
+
+    return { statusText, distText, isAtStop };
+  }, [latestBus, routeStops, recommendations]);
+
   /* ── Sheet content ── */
   const renderSheetContent = () => {
     if (loading) {
@@ -589,8 +634,29 @@ export default function JourneyScreen() {
     <GestureHandlerRootView style={styles.container}>
       <StatusBar style="light" />
 
-      <Map busPosition={busPosition} userPosition={userPosition} routeSegment={routeSegment} />
+      <Map busPosition={busPosition} busHeading={latestBus?.Heading ?? 0} userPosition={userPosition} routeSegment={routeSegment} />
       <View style={styles.mapOverlay} pointerEvents="none" />
+
+      {/* ── Navigation banner ── */}
+      {navBanner && (
+        <View style={[styles.navBanner, { top: insets.top + 8 }]} pointerEvents="none">
+          <View style={styles.navBannerLeft}>
+            <MaterialCommunityIcons
+              name={navBanner.isAtStop ? "map-marker" : "bus"}
+              size={20}
+              color={ACCENT}
+            />
+            <Text style={styles.navBannerText} numberOfLines={1}>
+              {navBanner.statusText}
+            </Text>
+          </View>
+          {navBanner.distText ? (
+            <View style={styles.navBannerDistBadge}>
+              <Text style={styles.navBannerDistText}>{navBanner.distText}</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
 
       {/* ── Bottom Sheet ── */}
       <GestureDetector gesture={pan}>
@@ -730,5 +796,50 @@ const styles = StyleSheet.create({
     color: TEXT_SECONDARY,
     fontSize: 14,
     fontWeight: "600",
+  },
+
+  // ── Navigation banner ──────────────────────────────────────────────────────
+  navBanner: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(13,13,13,0.92)",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  navBannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 10,
+  },
+  navBannerText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "600",
+    flex: 1,
+  },
+  navBannerDistBadge: {
+    backgroundColor: ACCENT,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginLeft: 10,
+  },
+  navBannerDistText: {
+    color: "#000",
+    fontSize: 13,
+    fontWeight: "700",
   },
 });

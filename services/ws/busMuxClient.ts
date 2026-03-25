@@ -183,6 +183,7 @@ export class BusMuxClient {
     this.ws = ws;
 
     ws.onopen = () => {
+      console.log('[busMux] socket open, sending', this.activeSubs.size, 'pending subs');
       this.reconnectDelay = 1_000;
       this._startPing();
       // Re-subscribe all active subscriptions after reconnect
@@ -195,13 +196,15 @@ export class BusMuxClient {
     ws.onmessage = (evt) => {
       try {
         const frame = JSON.parse(evt.data as string) as ServerFrame;
+        console.log('[busMux] frame received:', frame.type);
         this._handleFrame(frame);
       } catch {
         // ignore malformed frames
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (evt) => {
+      console.log('[busMux] socket closed — code:', evt.code, 'reason:', evt.reason);
       this._stopPing();
       this.disconnectHandlers.forEach(h => h());
       if (!this.intentionalClose) {
@@ -209,7 +212,8 @@ export class BusMuxClient {
       }
     };
 
-    ws.onerror = () => {
+    ws.onerror = (err) => {
+      console.warn('[busMux] socket error:', err);
       // onclose fires after onerror — reconnect handled there
     };
   }

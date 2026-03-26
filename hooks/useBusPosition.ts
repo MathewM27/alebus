@@ -44,6 +44,9 @@ export function useBusPosition(
   const [displayPos, setDisplayPos] = useState<DisplayPosition | null>(null);
   const [latestBus, setLatestBus] = useState<WsBusDTO | null>(null);
 
+  // Monotonic sequence guard — discard frames that arrive out of order.
+  const lastSeqRef = useRef<number>(-1);
+
   // All interpolation state lives in a ref so the ticker closure is always
   // reading the latest values without needing to be re-created.
   const lerpRef = useRef<{
@@ -87,13 +90,27 @@ export function useBusPosition(
       setLatestBus(null);
       setDisplayPos(null);
       lerpRef.current = { from: null, to: null, current: null, startTime: 0 };
+      lastSeqRef.current = -1;
       return;
     }
+    // Reset seq guard for the new bus subscription
+    lastSeqRef.current = -1;
+
+    // The server's seq counter is per-WS-connection and resets to 0 on every
+    // reconnect. Reset the guard when the socket reopens so fresh frames from
+    // the new connection are not silently discarded.
+    const offConnect = busMuxClient.onConnect(() => {
+      lastSeqRef.current = -1;
+    });
 
     const off = busMuxClient.onBusUpdate((frame) => {
       // The mux may carry updates for other buses; filter to the one we care about.
       console.log("[useBusPosition] bus.update received — frame busId:", frame.bus.BusID, "watching:", busId);
       if (frame.bus.BusID !== busId) return;
+
+      // Discard out-of-order frames (can arrive during reconnect replays).
+      if (frame.seq <= lastSeqRef.current) return;
+      lastSeqRef.current = frame.seq;
 
       const bus = frame.bus;
       console.log("[useBusPosition] matched — stopIndex:", bus.StopIndex, "fractional:", bus.FractionalIndex, "routeStops:", routeStopsRef.current?.length ?? "null");
@@ -124,7 +141,10 @@ export function useBusPosition(
       };
     });
 
-    return off;
+    return () => {
+      off();
+      offConnect();
+    };
   }, [busId]);
 
   return { displayPos, latestBus };

@@ -350,69 +350,68 @@ export default function JourneyScreen() {
     });
   }, [latestBus]);
 
-  /* ── Resolve stop names + road polyline from route stops ── */
+  /* ── Fetch route stops whenever the active route changes ── */
   useEffect(() => {
-    if (!busDetails?.routeId || busDetails.stopIndex == null) return;
-    const originStopId = recommendations[0]?.originStopId;
-
+    if (!busDetails?.routeId) return;
     fetchRouteStops(busDetails.routeId).then((stops) => {
       console.log("[journey] setRouteStops — count:", stops.length, "routeId:", busDetails.routeId);
       setRouteStops(stops);
-
-      // Bus current stop name
-      const busStop = stops.find((s) => s.seq === busDetails.stopIndex);
-      setBusStopName(busStop?.name ?? null);
-      console.log("[journey] bus stop name:", busStop?.name, "seq:", busDetails.stopIndex);
-
-      // User boarding stop name (look up by stop id in route stops)
-      if (originStopId) {
-        const userStop = stops.find((s) => s.id === originStopId);
-        setUserStopName(userStop?.name ?? null);
-        console.log("[journey] user stop name:", userStop?.name, "id:", originStopId);
-
-        // Build road-following polyline from the bus's current road position → user stop.
-        // Start from the road-snapped position (not raw GPS) so the polyline always
-        // begins exactly where the bus marker sits, with no backward kink.
-        const busHasPassed = busStop && userStop && busStop.seq > userStop.seq;
-        if (busHasPassed) {
-          setRouteSegment(undefined);
-        } else if (busStop && userStop) {
-          const frac = Math.max(0, Math.min(1, latestBusRef.current?.FractionalIndex ?? 0));
-
-          // Road-snapped start = exact marker position on the polyline
-          const snappedStart = roadPosition(stops, busStop.seq, frac);
-          const coords: { lat: number; lon: number }[] = snappedStart
-            ? [snappedStart]
-            : [{ lat: busDetails.position?.lat ?? busStop.lat, lon: busDetails.position?.lon ?? busStop.lon }];
-
-          // Current segment: remaining pathToNext after the fraction
-          const busPathToNext = busStop.pathToNext ?? [];
-          if (busPathToNext.length > 0) {
-            // pathAfterFraction returns an array starting with the interpolated point
-            // at fraction t — skip that first point since snappedStart already has it.
-            const remaining = pathAfterFraction(busPathToNext, frac);
-            coords.push(...remaining.slice(1));
-          }
-
-          // Subsequent stops: include full pathToNext road geometry
-          for (let seq = busStop.seq + 1; seq < userStop.seq; seq++) {
-            const seg = stops.find((s) => s.seq === seq);
-            if (seg?.pathToNext?.length) {
-              coords.push(...seg.pathToNext);
-            } else {
-              const next = stops.find((s) => s.seq === seq + 1);
-              if (next) coords.push({ lat: next.lat, lon: next.lon });
-            }
-          }
-          coords.push({ lat: userStop.lat, lon: userStop.lon });
-          setRouteSegment(coords.length >= 2 ? coords : undefined);
-        }
-      }
     });
-  // NOTE: position.lat/lon intentionally excluded — the polyline start is now computed
-  // from roadPosition(stopIndex, fractional) not raw GPS, so we only need to rebuild
-  // when the bus passes a new stop (stopIndex changes) or the destination changes.
-  }, [busDetails?.routeId, busDetails?.stopIndex, recommendations[0]?.originStopId]);
+  }, [busDetails?.routeId]);
+
+  /* ── Rebuild road polyline whenever bus advances along the route ──
+   *
+   * Runs on every WS bus.update frame (via latestBus?.FractionalIndex) so the
+   * polyline start stays snapped to the marker as it moves within a segment.
+   * Uses already-loaded routeStops state — no HTTP call here.
+   */
+  useEffect(() => {
+    if (!routeStops || routeStops.length < 2 || !busDetails || busDetails.stopIndex == null) return;
+    const originStopId = recommendations[0]?.originStopId;
+
+    const busStop = routeStops.find((s) => s.seq === busDetails.stopIndex);
+    setBusStopName(busStop?.name ?? null);
+    console.log("[journey] bus stop name:", busStop?.name, "seq:", busDetails.stopIndex);
+
+    if (!originStopId) return;
+    const userStop = routeStops.find((s) => s.id === originStopId);
+    setUserStopName(userStop?.name ?? null);
+    console.log("[journey] user stop name:", userStop?.name, "id:", originStopId);
+
+    if (!busStop || !userStop) return;
+
+    const busHasPassed = busStop.seq > userStop.seq;
+    if (busHasPassed) {
+      setRouteSegment(undefined);
+      return;
+    }
+
+    // Use latest fractional from the WS frame so the polyline start tracks the marker.
+    const frac = Math.max(0, Math.min(1, latestBus?.FractionalIndex ?? 0));
+
+    const snappedStart = roadPosition(routeStops, busStop.seq, frac);
+    const coords: { lat: number; lon: number }[] = snappedStart
+      ? [snappedStart]
+      : [{ lat: busDetails.position?.lat ?? busStop.lat, lon: busDetails.position?.lon ?? busStop.lon }];
+
+    const busPathToNext = busStop.pathToNext ?? [];
+    if (busPathToNext.length > 0) {
+      const remaining = pathAfterFraction(busPathToNext, frac);
+      coords.push(...remaining.slice(1));
+    }
+
+    for (let seq = busStop.seq + 1; seq < userStop.seq; seq++) {
+      const seg = routeStops.find((s) => s.seq === seq);
+      if (seg?.pathToNext?.length) {
+        coords.push(...seg.pathToNext);
+      } else {
+        const next = routeStops.find((s) => s.seq === seq + 1);
+        if (next) coords.push({ lat: next.lat, lon: next.lon });
+      }
+    }
+    coords.push({ lat: userStop.lat, lon: userStop.lon });
+    setRouteSegment(coords.length >= 2 ? coords : undefined);
+  }, [routeStops, busDetails?.stopIndex, recommendations[0]?.originStopId, latestBus?.FractionalIndex]);
 
   const snapTo = useCallback(
     (target: number) => {

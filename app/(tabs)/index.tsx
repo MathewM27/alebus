@@ -47,7 +47,7 @@ const SUGGESTION_BG = "#1A1A1D";
 /* snap points – heights measured from the bottom of the screen */
 const SNAP_LOW = 140;
 const SNAP_MID = SCREEN_H * 0.5;
-const SNAP_HIGH = SCREEN_H * 0.85;
+const SNAP_HIGH = SCREEN_H * 0.55;
 
 const TY_HIGH = SCREEN_H - SNAP_HIGH;
 const TY_MID = SCREEN_H - SNAP_MID;
@@ -115,7 +115,6 @@ const quickStyles = StyleSheet.create({
   },
   btnActive: { borderColor: ACCENT },
 });
-
 
 /* ─────────────────────────────────────────────────
    Suggestion row (shared between origin & dest lists)
@@ -238,7 +237,9 @@ export default function HomeScreen() {
     }
 
     const q = text.toLowerCase();
-    setOriginSuggestions(allStops.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6));
+    setOriginSuggestions(
+      allStops.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6),
+    );
   };
 
   /* ── Origin: select a stop from suggestions ── */
@@ -349,8 +350,8 @@ export default function HomeScreen() {
 
   /* ── Pan gesture ── */
   const pan = Gesture.Pan()
-    .activeOffsetY([-10, 10])
-    .failOffsetX([-15, 15])
+    .activeOffsetY([-25, 25])
+    .failOffsetX([-10, 10])
     .onStart(() => {
       ctx.value = translateY.value;
     })
@@ -443,7 +444,12 @@ export default function HomeScreen() {
           </View>
 
           {/* Origin search */}
-          <View style={[styles.searchWrap, { flexDirection: "row", alignItems: "center", gap: 10 }]}>
+          <View
+            style={[
+              styles.searchWrap,
+              { flexDirection: "row", alignItems: "center", gap: 10 },
+            ]}
+          >
             <View
               style={[
                 styles.searchRow,
@@ -474,7 +480,11 @@ export default function HomeScreen() {
                 />
               </View>
               {originLoading && (
-                <ActivityIndicator size="small" color={ACCENT} style={{ marginLeft: 6 }} />
+                <ActivityIndicator
+                  size="small"
+                  color={ACCENT}
+                  style={{ marginLeft: 6 }}
+                />
               )}
               {selectedOrigin && !originLoading && (
                 <MaterialCommunityIcons
@@ -518,11 +528,17 @@ export default function HomeScreen() {
                   ))}
                 </View>
               )}
-              {originFocused && originText.length > 1 && originSuggestions.length === 0 && !stopsLoading && stopsLoaded && (
-                <View style={styles.emptyHint}>
-                  <Text style={styles.emptyHintText}>No stops found for "{originText}"</Text>
-                </View>
-              )}
+              {originFocused &&
+                originText.length > 1 &&
+                originSuggestions.length === 0 &&
+                !stopsLoading &&
+                stopsLoaded && (
+                  <View style={styles.emptyHint}>
+                    <Text style={styles.emptyHintText}>
+                      No stops found for "{originText}"
+                    </Text>
+                  </View>
+                )}
 
               {/* Where to? + Quick Actions */}
               <View>
@@ -541,8 +557,8 @@ export default function HomeScreen() {
                         destinationError
                           ? "#ff6b6b"
                           : selectedStop
-                          ? ACCENT
-                          : ACCENT
+                            ? ACCENT
+                            : ACCENT
                       }
                       style={{ marginRight: 8 }}
                     />
@@ -564,7 +580,11 @@ export default function HomeScreen() {
                       returnKeyType="search"
                     />
                     {stopsLoading && (
-                      <ActivityIndicator size="small" color={ACCENT} style={{ marginLeft: 4 }} />
+                      <ActivityIndicator
+                        size="small"
+                        color={ACCENT}
+                        style={{ marginLeft: 4 }}
+                      />
                     )}
                     {selectedStop && !destFocused && (
                       <MaterialCommunityIcons
@@ -595,7 +615,12 @@ export default function HomeScreen() {
 
                 {/* Destination suggestions */}
                 {destSuggestions.length > 0 && (
-                  <View style={[styles.suggestionBox, { marginTop: -8, marginBottom: 12 }]}>
+                  <View
+                    style={[
+                      styles.suggestionBox,
+                      { marginTop: -8, marginBottom: 12 },
+                    ]}
+                  >
                     {destSuggestions.map((stop) => (
                       <SuggestionRow
                         key={stop.id}
@@ -609,11 +634,17 @@ export default function HomeScreen() {
                 )}
 
                 {/* Empty state when dest focused but no results yet */}
-                {destFocused && destText.length > 1 && destSuggestions.length === 0 && !stopsLoading && stopsLoaded && (
-                  <View style={styles.emptyHint}>
-                    <Text style={styles.emptyHintText}>No stops found for "{destText}"</Text>
-                  </View>
-                )}
+                {destFocused &&
+                  destText.length > 1 &&
+                  destSuggestions.length === 0 &&
+                  !stopsLoading &&
+                  stopsLoaded && (
+                    <View style={styles.emptyHint}>
+                      <Text style={styles.emptyHintText}>
+                        No stops found for "{destText}"
+                      </Text>
+                    </View>
+                  )}
               </View>
 
               {/* Find Bus */}
@@ -633,7 +664,6 @@ export default function HomeScreen() {
                   Find Bus
                 </Text>
               </Pressable>
-
             </ScrollView>
           </Animated.View>
         </Animated.View>

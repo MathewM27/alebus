@@ -213,7 +213,7 @@ export default function HomeScreen() {
       setAllStops(stops);
       setStopsLoaded(true);
     } catch {
-      setStopsLoaded(true);
+      // Don't mark as loaded on failure — allow retry on next focus
     } finally {
       setStopsLoading(false);
     }

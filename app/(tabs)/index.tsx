@@ -28,6 +28,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import Map from "@/components/Map";
@@ -373,7 +374,7 @@ export default function HomeScreen() {
       if (Math.abs(v) > FLING) {
         if (v > 0) {
           snapTo(cur < TY_MID ? TY_MID : TY_LOW);
-          if (cur >= TY_MID) dismissKB();
+          if (cur >= TY_MID) scheduleOnRN(dismissKB);
         } else {
           snapTo(cur > TY_MID ? TY_MID : TY_HIGH);
         }
@@ -391,7 +392,7 @@ export default function HomeScreen() {
         }
       }
       snapTo(best);
-      if (best === TY_LOW) dismissKB();
+      if (best === TY_LOW) scheduleOnRN(dismissKB);
     });
 
   /* ── Animated styles ── */

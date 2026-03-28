@@ -3,7 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -48,11 +48,13 @@ const SUGGESTION_BG = "#1A1A1D";
 /* snap points – heights measured from the bottom of the screen */
 const SNAP_LOW = 140;
 const SNAP_MID = SCREEN_H * 0.5;
-const SNAP_HIGH = SCREEN_H * 0.55;
+const SNAP_HIGH = SCREEN_H * 0.5;
+const SNAP_KB = SCREEN_H * 0.9;
 
 const TY_HIGH = SCREEN_H - SNAP_HIGH;
 const TY_MID = SCREEN_H - SNAP_MID;
 const TY_LOW = SCREEN_H - SNAP_LOW;
+const TY_KB = SCREEN_H - SNAP_KB;
 
 const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
 
@@ -347,6 +349,25 @@ export default function HomeScreen() {
 
   const expandToHigh = useCallback(() => {
     translateY.value = withSpring(TY_HIGH, SPRING_CFG);
+  }, []);
+
+  /* ── Snap up when keyboard shows, snap back when it hides ── */
+  const preKBSnap = useRef(TY_LOW);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => {
+      preKBSnap.current = translateY.value;
+      translateY.value = withSpring(TY_KB, SPRING_CFG);
+    });
+    const hide = Keyboard.addListener("keyboardDidHide", () => {
+      translateY.value = withSpring(
+        Math.max(preKBSnap.current, TY_HIGH),
+        SPRING_CFG,
+      );
+    });
+    return () => {
+      show.remove();
+      hide.remove();
+    };
   }, []);
 
   /* ── Pan gesture ── */

@@ -51,7 +51,7 @@ const BORDER = "rgba(255,255,255,0.12)";
 /* ── snap points ── */
 const SNAP_LOW = 140;
 const SNAP_MID = SCREEN_H * 0.35;
-const SNAP_HIGH = SCREEN_H * 0.85;
+const SNAP_HIGH = SCREEN_H * 0.65;
 
 const TY_HIGH = SCREEN_H - SNAP_HIGH;
 const TY_MID = SCREEN_H - SNAP_MID;

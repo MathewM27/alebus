@@ -1,7 +1,13 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -33,12 +39,17 @@ import ShortcutsSection, {
   type Shortcut,
 } from "@/components/journey/ShortcutsSection";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBusPosition } from "@/hooks/useBusPosition";
 import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
-import { cancelJourney, createJourney, loadActiveJourneys, type CreateJourneyResponse } from "@/services/api/journey";
+import {
+  cancelJourney,
+  createJourney,
+  loadActiveJourneys,
+  type CreateJourneyResponse,
+} from "@/services/api/journey";
 import { fetchRouteStops, type RouteStop } from "@/services/api/stops";
 import { busMuxClient } from "@/services/ws/busMuxClient";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
-import { useBusPosition } from "@/hooks/useBusPosition";
 import { pathAfterFraction, roadPosition } from "@/utils/routeGeometry";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -55,7 +66,7 @@ const BORDER = "rgba(255,255,255,0.12)";
 /* ── snap points ── */
 const SNAP_LOW = 140;
 const SNAP_MID = SCREEN_H * 0.46;
-const SNAP_HIGH = SCREEN_H * 0.75;
+const SNAP_HIGH = SCREEN_H * 0.65;
 
 const TY_HIGH = SCREEN_H - SNAP_HIGH;
 const TY_MID = SCREEN_H - SNAP_MID;
@@ -66,10 +77,14 @@ const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
 /* ── Proximity level (int) → name used by format.ts color/label helpers ── */
 function proximityLevelToName(level: number): string {
   switch (level) {
-    case 1: return "approaching"; // ≤500m
-    case 2: return "near";        // ≤100m
-    case 3: return "arriving";    // ≤50m
-    default: return "none";       // >500m or unknown
+    case 1:
+      return "approaching"; // ≤500m
+    case 2:
+      return "near"; // ≤100m
+    case 3:
+      return "arriving"; // ≤50m
+    default:
+      return "none"; // >500m or unknown
   }
 }
 
@@ -78,7 +93,10 @@ function proximityLevelToName(level: number): string {
    One card per bus recommendation (index 0 = active card)
    ───────────────────────────────────────────────── */
 function responseToCards(resp: CreateJourneyResponse): JourneyTrackingDTO[] {
-  console.log("[journey] mapping response → cards, recs:", resp.recommendations.length);
+  console.log(
+    "[journey] mapping response → cards, recs:",
+    resp.recommendations.length,
+  );
   return resp.recommendations.map((rec, i) => ({
     journeyId: i === 0 ? resp.journeyId : `${resp.journeyId}-alt-${i}`,
     status: 2,
@@ -109,7 +127,9 @@ export default function JourneyScreen() {
   }>();
 
   /* ── API state ── */
-  const [recommendations, setRecommendations] = useState<JourneyTrackingDTO[]>([]);
+  const [recommendations, setRecommendations] = useState<JourneyTrackingDTO[]>(
+    [],
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [journeyId, setJourneyId] = useState<string | null>(null);
@@ -118,7 +138,9 @@ export default function JourneyScreen() {
   const [busDetails, setBusDetails] = useState<BusDetailsDTO | null>(null);
   const [busStopName, setBusStopName] = useState<string | null>(null);
   const [userStopName, setUserStopName] = useState<string | null>(null);
-  const [routeSegment, setRouteSegment] = useState<{ lat: number; lon: number }[] | undefined>(undefined);
+  const [routeSegment, setRouteSegment] = useState<
+    { lat: number; lon: number }[] | undefined
+  >(undefined);
   const [routeStops, setRouteStops] = useState<RouteStop[] | null>(null);
 
   /* ── Shortcuts state ── */
@@ -129,6 +151,8 @@ export default function JourneyScreen() {
   const ctx = useSharedValue(0);
   const maxSnapY = useSharedValue(TY_MID);
   const overscrollGlow = useSharedValue(0);
+  const titleOpacity = useSharedValue(1);
+  const isSectionExpanded = useSharedValue(false);
 
   const hasRecommendations = recommendations.length > 0;
 
@@ -137,6 +161,11 @@ export default function JourneyScreen() {
     maxSnapY.value = hasRecommendations ? TY_HIGH : TY_MID;
     if (hasRecommendations) {
       translateY.value = withSpring(TY_MID, SPRING_CFG);
+      // Hide title when journey is active
+      titleOpacity.value = withTiming(0, { duration: 300 });
+    } else {
+      // Show title when no active journeys
+      titleOpacity.value = withTiming(1, { duration: 300 });
     }
   }, [hasRecommendations]);
 
@@ -149,18 +178,27 @@ export default function JourneyScreen() {
     if (params.originLat || params.originLon || params.destStopId) return; // params will trigger createJourney instead
 
     const load = async () => {
-      console.log("[journey] no nav params — checking for existing active journeys");
+      console.log(
+        "[journey] no nav params — checking for existing active journeys",
+      );
       try {
         const existing = await loadActiveJourneys(authUserId);
         if (existing.length > 0) {
-          console.log("[journey] restored", existing.length, "active journey(s)");
+          console.log(
+            "[journey] restored",
+            existing.length,
+            "active journey(s)",
+          );
           setJourneyId(existing[0].journeyId);
           setRecommendations(existing);
         } else {
           console.log("[journey] no active journeys found");
         }
       } catch (e: any) {
-        console.warn("[journey] failed to load active journeys on mount:", e?.message ?? e);
+        console.warn(
+          "[journey] failed to load active journeys on mount:",
+          e?.message ?? e,
+        );
       }
     };
 
@@ -183,7 +221,12 @@ export default function JourneyScreen() {
     }
     lastCallKey.current = callKey;
 
-    console.log("[journey] params received →", { originLat, originLon, destStopId, destStopName });
+    console.log("[journey] params received →", {
+      originLat,
+      originLon,
+      destStopId,
+      destStopName,
+    });
 
     const run = async () => {
       setLoading(true);
@@ -223,7 +266,9 @@ export default function JourneyScreen() {
 
         if (resp.recommendations.length === 0) {
           console.warn("[journey] 0 recommendations returned");
-          setError("No buses found for this route right now. Try again shortly.");
+          setError(
+            "No buses found for this route right now. Try again shortly.",
+          );
           setLoading(false);
           return;
         }
@@ -235,23 +280,41 @@ export default function JourneyScreen() {
       } catch (err: any) {
         const msg = err?.message ?? String(err);
         const status = err?.status;
-        console.warn("[journey] createJourney error — status:", status, "msg:", msg);
+        console.warn(
+          "[journey] createJourney error — status:",
+          status,
+          "msg:",
+          msg,
+        );
 
         if (status === 409) {
           // User already has active journeys — load and display them
-          console.log("[journey] 409 conflict — loading existing active journeys");
+          console.log(
+            "[journey] 409 conflict — loading existing active journeys",
+          );
           try {
             const existing = await loadActiveJourneys(authUserId);
             if (existing.length > 0) {
-              console.log("[journey] found", existing.length, "existing active journey(s)");
+              console.log(
+                "[journey] found",
+                existing.length,
+                "existing active journey(s)",
+              );
               setJourneyId(existing[0].journeyId);
               setRecommendations(existing);
             } else {
-              setError("You have a journey in progress but it could not be loaded. Please try again.");
+              setError(
+                "You have a journey in progress but it could not be loaded. Please try again.",
+              );
             }
           } catch (loadErr: any) {
-            console.warn("[journey] failed to load existing journeys:", loadErr?.message ?? loadErr);
-            setError("You already have an active journey. Please wait or try again shortly.");
+            console.warn(
+              "[journey] failed to load existing journeys:",
+              loadErr?.message ?? loadErr,
+            );
+            setError(
+              "You already have an active journey. Please wait or try again shortly.",
+            );
           }
         } else {
           setError(msg || "Failed to find a journey. Please try again.");
@@ -268,13 +331,19 @@ export default function JourneyScreen() {
   useEffect(() => {
     if (!journeyId) return;
 
-    busMuxClient.connect()
+    busMuxClient
+      .connect()
       .then(() => {
-        console.log("[journey] WS connected OK, subscribing to journeyId:", journeyId);
+        console.log(
+          "[journey] WS connected OK, subscribing to journeyId:",
+          journeyId,
+        );
         return busMuxClient.subscribeJourney(journeyId);
       })
       .then((subId) => console.log("[journey] WS subscribed, subId:", subId))
-      .catch((e: any) => console.warn("[journey] WS connect/subscribe failed:", e?.message ?? e));
+      .catch((e: any) =>
+        console.warn("[journey] WS connect/subscribe failed:", e?.message ?? e),
+      );
 
     return () => {
       busMuxClient.disconnect();
@@ -288,8 +357,14 @@ export default function JourneyScreen() {
     const off = busMuxClient.onJourneyUpdate((frame) => {
       if (frame.journey.journeyId !== journeyId) return;
       const j = frame.journey;
-      const proximityName = j.proximityName || proximityLevelToName(j.proximityLevel ?? 0);
-      console.log("[journey] WS journey.update — proximityLevel:", j.proximityLevel, "→", proximityName);
+      const proximityName =
+        j.proximityName || proximityLevelToName(j.proximityLevel ?? 0);
+      console.log(
+        "[journey] WS journey.update — proximityLevel:",
+        j.proximityLevel,
+        "→",
+        proximityName,
+      );
       setRecommendations((prev) => {
         if (prev.length === 0) return prev;
         const next = [...prev];
@@ -297,9 +372,10 @@ export default function JourneyScreen() {
           ...next[0],
           proximityName,
           proximityLevel: j.proximityLevel,
-          recommendations: j.recommendations?.length > 0
-            ? j.recommendations
-            : next[0].recommendations,
+          recommendations:
+            j.recommendations?.length > 0
+              ? j.recommendations
+              : next[0].recommendations,
           activeBusId: j.activeBusId ?? next[0].activeBusId,
         };
         return next;
@@ -316,7 +392,9 @@ export default function JourneyScreen() {
   // Keep latestBus in a ref so the routeSegment effect can read fractionalIndex
   // without being in its dependency array (avoids rebuilding polyline every WS frame)
   const latestBusRef = useRef(latestBus);
-  useEffect(() => { latestBusRef.current = latestBus; }, [latestBus]);
+  useEffect(() => {
+    latestBusRef.current = latestBus;
+  }, [latestBus]);
 
   /* ── One-time initial HTTP fetch so map/stops render before first WS frame ── */
   useEffect(() => {
@@ -326,13 +404,21 @@ export default function JourneyScreen() {
         // Only apply if WS hasn't already delivered a frame (latestBus takes precedence)
         setBusDetails((prev) => prev ?? details);
       })
-      .catch((e: any) => console.warn("[journey] initial bus fetch:", e?.message ?? e));
+      .catch((e: any) =>
+        console.warn("[journey] initial bus fetch:", e?.message ?? e),
+      );
   }, [activeBusId]);
 
   /* ── Sync latestBus → busDetails for route segment computation ── */
   useEffect(() => {
     if (!latestBus) return;
-    console.log("[journey] WS bus.update — stopIndex:", latestBus.StopIndex, "pos:", latestBus.Position.Lat, latestBus.Position.Lon);
+    console.log(
+      "[journey] WS bus.update — stopIndex:",
+      latestBus.StopIndex,
+      "pos:",
+      latestBus.Position.Lat,
+      latestBus.Position.Lon,
+    );
     setBusDetails({
       busId: latestBus.BusID,
       operatorId: latestBus.OperatorID,
@@ -354,7 +440,12 @@ export default function JourneyScreen() {
   useEffect(() => {
     if (!busDetails?.routeId) return;
     fetchRouteStops(busDetails.routeId).then((stops) => {
-      console.log("[journey] setRouteStops — count:", stops.length, "routeId:", busDetails.routeId);
+      console.log(
+        "[journey] setRouteStops — count:",
+        stops.length,
+        "routeId:",
+        busDetails.routeId,
+      );
       setRouteStops(stops);
     });
   }, [busDetails?.routeId]);
@@ -366,17 +457,33 @@ export default function JourneyScreen() {
    * Uses already-loaded routeStops state — no HTTP call here.
    */
   useEffect(() => {
-    if (!routeStops || routeStops.length < 2 || !busDetails || busDetails.stopIndex == null) return;
+    if (
+      !routeStops ||
+      routeStops.length < 2 ||
+      !busDetails ||
+      busDetails.stopIndex == null
+    )
+      return;
     const originStopId = recommendations[0]?.originStopId;
 
     const busStop = routeStops.find((s) => s.seq === busDetails.stopIndex);
     setBusStopName(busStop?.name ?? null);
-    console.log("[journey] bus stop name:", busStop?.name, "seq:", busDetails.stopIndex);
+    console.log(
+      "[journey] bus stop name:",
+      busStop?.name,
+      "seq:",
+      busDetails.stopIndex,
+    );
 
     if (!originStopId) return;
     const userStop = routeStops.find((s) => s.id === originStopId);
     setUserStopName(userStop?.name ?? null);
-    console.log("[journey] user stop name:", userStop?.name, "id:", originStopId);
+    console.log(
+      "[journey] user stop name:",
+      userStop?.name,
+      "id:",
+      originStopId,
+    );
 
     if (!busStop || !userStop) return;
 
@@ -392,7 +499,12 @@ export default function JourneyScreen() {
     const snappedStart = roadPosition(routeStops, busStop.seq, frac);
     const coords: { lat: number; lon: number }[] = snappedStart
       ? [snappedStart]
-      : [{ lat: busDetails.position?.lat ?? busStop.lat, lon: busDetails.position?.lon ?? busStop.lon }];
+      : [
+          {
+            lat: busDetails.position?.lat ?? busStop.lat,
+            lon: busDetails.position?.lon ?? busStop.lon,
+          },
+        ];
 
     const busPathToNext = busStop.pathToNext ?? [];
     if (busPathToNext.length > 0) {
@@ -411,7 +523,12 @@ export default function JourneyScreen() {
     }
     coords.push({ lat: userStop.lat, lon: userStop.lon });
     setRouteSegment(coords.length >= 2 ? coords : undefined);
-  }, [routeStops, busDetails?.stopIndex, recommendations[0]?.originStopId, latestBus?.FractionalIndex]);
+  }, [
+    routeStops,
+    busDetails?.stopIndex,
+    recommendations[0]?.originStopId,
+    latestBus?.FractionalIndex,
+  ]);
 
   const snapTo = useCallback(
     (target: number) => {
@@ -420,6 +537,17 @@ export default function JourneyScreen() {
     },
     [translateY],
   );
+
+  /* ── Edit shortcut handlers ── */
+  const handleEditStart = useCallback(() => {
+    isSectionExpanded.value = true;
+    snapTo(TY_HIGH);
+  }, [snapTo]);
+
+  const handleEditClose = useCallback(() => {
+    isSectionExpanded.value = false;
+    snapTo(TY_MID);
+  }, [snapTo]);
 
   /* ── Pan gesture ── */
   const pan = Gesture.Pan()
@@ -431,13 +559,15 @@ export default function JourneyScreen() {
     .onUpdate((e) => {
       const rawY = ctx.value + e.translationY;
       const currentMax = maxSnapY.value;
-      if (rawY < currentMax) {
-        const overAmount = Math.min((currentMax - rawY) / 80, 1);
+      // Restrict minimum based on whether shortcut editor is expanded
+      const minY = isSectionExpanded.value ? TY_HIGH : currentMax;
+      if (rawY < minY) {
+        const overAmount = Math.min((minY - rawY) / 80, 1);
         overscrollGlow.value = overAmount;
       } else {
         overscrollGlow.value = withTiming(0, { duration: 150 });
       }
-      translateY.value = Math.max(currentMax, Math.min(rawY, TY_LOW));
+      translateY.value = Math.max(minY, Math.min(rawY, TY_LOW));
     })
     .onEnd((e) => {
       overscrollGlow.value = withTiming(0, { duration: 200 });
@@ -446,16 +576,31 @@ export default function JourneyScreen() {
       const FLING = 600;
       const maxSnap = maxSnapY.value;
 
+      // Choose snap points based on whether shortcut editor is expanded
+      const snaps = isSectionExpanded.value
+        ? [TY_HIGH, TY_MID, TY_LOW]
+        : [maxSnap, TY_MID, TY_LOW];
+
       if (Math.abs(v) > FLING) {
         if (v > 0) {
-          snapTo(cur < TY_MID ? TY_MID : TY_LOW);
+          // Fling down
+          if (isSectionExpanded.value) {
+            snapTo(cur < TY_MID ? TY_MID : TY_LOW);
+          } else {
+            snapTo(cur < TY_MID ? TY_MID : TY_LOW);
+          }
         } else {
-          snapTo(cur > TY_MID ? TY_MID : maxSnap);
+          // Fling up - only allow HIGH if shortcut editor is expanded
+          if (isSectionExpanded.value) {
+            snapTo(cur > TY_MID ? TY_MID : TY_HIGH);
+          } else {
+            snapTo(cur > TY_MID ? TY_MID : maxSnap);
+          }
         }
         return;
       }
 
-      const snaps = [maxSnap, TY_MID, TY_LOW];
+      // Find closest snap point
       let best = snaps[0];
       let bestD = Math.abs(cur - snaps[0]);
       for (const snap of snaps) {
@@ -486,6 +631,10 @@ export default function JourneyScreen() {
     ),
   }));
 
+  const titleStyle = useAnimatedStyle(() => ({
+    opacity: titleOpacity.value,
+  }));
+
   /* ── Handlers ── */
   const handleEndTracking = useCallback(() => {
     console.log("[journey] end tracking, journeyId:", journeyId);
@@ -495,15 +644,17 @@ export default function JourneyScreen() {
       .map((r) => r.journeyId)
       .filter((id) => !id.includes("-alt-"));
     if (realIds.length > 0) {
-      Promise.allSettled(realIds.map((id) => cancelJourney(id))).then((results) => {
-        results.forEach((r, i) => {
-          if (r.status === "rejected") {
-            console.warn("[journey] cancel failed for", realIds[i], r.reason);
-          } else {
-            console.log("[journey] cancelled journey:", realIds[i]);
-          }
-        });
-      });
+      Promise.allSettled(realIds.map((id) => cancelJourney(id))).then(
+        (results) => {
+          results.forEach((r, i) => {
+            if (r.status === "rejected") {
+              console.warn("[journey] cancel failed for", realIds[i], r.reason);
+            } else {
+              console.log("[journey] cancelled journey:", realIds[i]);
+            }
+          });
+        },
+      );
     }
 
     setRecommendations([]);
@@ -521,10 +672,6 @@ export default function JourneyScreen() {
     console.log("[journey] shortcut tapped:", sc.origin, "→", sc.destination);
   };
 
-  const handleEditStart = () => {
-    translateY.value = withSpring(TY_MID, SPRING_CFG);
-  };
-
   /* ── Map positions ── */
   // userPosition: prefer nav params (new journey); fall back to route stop coords
   // (restored journey where params are absent) so overview/compass always works.
@@ -532,14 +679,23 @@ export default function JourneyScreen() {
   const userPosition = useMemo(() => {
     if (!hasRecommendations) return undefined;
     if (params.originLat && params.originLon) {
-      return { lat: parseFloat(params.originLat), lon: parseFloat(params.originLon) };
+      return {
+        lat: parseFloat(params.originLat),
+        lon: parseFloat(params.originLon),
+      };
     }
     if (originStopId && routeStops) {
       const stop = routeStops.find((s) => s.id === originStopId);
       if (stop) return { lat: stop.lat, lon: stop.lon };
     }
     return undefined;
-  }, [hasRecommendations, params.originLat, params.originLon, originStopId, routeStops]);
+  }, [
+    hasRecommendations,
+    params.originLat,
+    params.originLon,
+    originStopId,
+    routeStops,
+  ]);
 
   // Only use the LERP-interpolated WS position for the marker.
   // No HTTP pre-fetch fallback — marker stays hidden until the first WS frame
@@ -552,20 +708,28 @@ export default function JourneyScreen() {
   const cameraTarget = useMemo(() => {
     if (!latestBus) return undefined;
     const frac = Math.max(0, Math.min(1, latestBus.FractionalIndex));
-    const snapped = routeStops && routeStops.length >= 2
-      ? roadPosition(routeStops, latestBus.StopIndex, frac)
-      : null;
-    return snapped ?? { lat: latestBus.Position.Lat, lon: latestBus.Position.Lon };
+    const snapped =
+      routeStops && routeStops.length >= 2
+        ? roadPosition(routeStops, latestBus.StopIndex, frac)
+        : null;
+    return (
+      snapped ?? { lat: latestBus.Position.Lat, lon: latestBus.Position.Lon }
+    );
   }, [latestBus, routeStops]);
 
   /* ── Navigation banner data ── */
   const navBanner = useMemo(() => {
-    console.log("[banner] latestBus:", latestBus?.BusID ?? "null", "routeStops:", routeStops?.length ?? "null");
+    console.log(
+      "[banner] latestBus:",
+      latestBus?.BusID ?? "null",
+      "routeStops:",
+      routeStops?.length ?? "null",
+    );
     if (!latestBus || !routeStops || routeStops.length === 0) return null;
 
     const sorted = [...routeStops].sort((a, b) => a.seq - b.seq);
     const currentStop = sorted.find((s) => s.seq === latestBus.StopIndex);
-    const nextStop    = sorted.find((s) => s.seq === latestBus.StopIndex + 1);
+    const nextStop = sorted.find((s) => s.seq === latestBus.StopIndex + 1);
 
     // "At stop" when fractional is very low (just arrived / dwelling)
     const isAtStop = latestBus.FractionalIndex < 0.08;
@@ -593,7 +757,7 @@ export default function JourneyScreen() {
     }
 
     return { statusText, distText, isAtStop };
-  }, [latestBus, routeStops, recommendations]);
+  }, [latestBus, routeStops]);
 
   /* ── Sheet content ── */
   const renderSheetContent = () => {
@@ -609,7 +773,11 @@ export default function JourneyScreen() {
     if (error) {
       return (
         <View style={styles.centeredState}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={32} color="#ff6b6b" />
+          <MaterialCommunityIcons
+            name="alert-circle-outline"
+            size={32}
+            color="#ff6b6b"
+          />
           <Text style={styles.errorText}>{error}</Text>
           <Pressable
             style={styles.retryBtn}
@@ -643,6 +811,7 @@ export default function JourneyScreen() {
           onShortcutsChange={setShortcuts}
           onStartJourney={handleStartJourney}
           onEditStart={handleEditStart}
+          onEditEnd={handleEditClose}
         />
         <View style={{ height: 40 }} />
         <ActiveJourneySection
@@ -660,12 +829,20 @@ export default function JourneyScreen() {
     <GestureHandlerRootView style={styles.container}>
       <StatusBar style="light" />
 
-      <Map busPosition={busPosition} cameraTarget={cameraTarget} userPosition={userPosition} routeSegment={routeSegment} />
+      <Map
+        busPosition={busPosition}
+        cameraTarget={cameraTarget}
+        userPosition={userPosition}
+        routeSegment={routeSegment}
+      />
       <View style={styles.mapOverlay} pointerEvents="none" />
 
       {/* ── Navigation banner ── */}
       {navBanner && (
-        <View style={[styles.navBanner, { top: insets.top + 8 }]} pointerEvents="none">
+        <View
+          style={[styles.navBanner, { top: insets.top + 8 }]}
+          pointerEvents="none"
+        >
           <View style={styles.navBannerLeft}>
             <MaterialCommunityIcons
               name={navBanner.isAtStop ? "map-marker" : "bus"}
@@ -692,7 +869,12 @@ export default function JourneyScreen() {
           </View>
 
           <View style={styles.headerWrap}>
-            <Text style={styles.headerTitle}>Journeys</Text>
+            <Animated.Text
+              style={[styles.headerTitle, titleStyle]}
+              pointerEvents={hasRecommendations ? "none" : "auto"}
+            >
+              Journeys
+            </Animated.Text>
             <Text style={styles.headerSubtitle}>
               {hasRecommendations
                 ? `${recommendations.length} bus${recommendations.length !== 1 ? "es" : ""} found`
@@ -834,8 +1016,8 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     backgroundColor: "rgba(13,13,13,0.92)",
     borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
     shadowColor: "#000",
@@ -852,20 +1034,20 @@ const styles = StyleSheet.create({
   },
   navBannerText: {
     color: "#FFFFFF",
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: "600",
     flex: 1,
   },
   navBannerDistBadge: {
     backgroundColor: ACCENT,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginLeft: 10,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginLeft: 12,
   },
   navBannerDistText: {
     color: "#000",
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: "700",
   },
 });

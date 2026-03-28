@@ -42,7 +42,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const { height: SCREEN_H } = Dimensions.get("window");
 const ACCENT = "#c1ec72";
 const BG = "#212122";
-const SHEET_BG = "#0E0E10";
+const SHEET_BG = "#000000";
 const SURFACE = "#151518";
 const TEXT_PRIMARY = "#FFFFFF";
 const TEXT_SECONDARY = "rgba(255,255,255,0.65)";
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
     textAlign: "center",
-    paddingBottom: 12,
+    paddingBottom: 16,
   },
 
   /* Tiles */

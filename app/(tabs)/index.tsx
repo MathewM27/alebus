@@ -38,7 +38,7 @@ import { loadAllStops, type NearbyStop } from "@/services/api/stops";
 const { height: SCREEN_H } = Dimensions.get("window");
 const ACCENT = "#c1ec72";
 const BG = "#000000";
-const SHEET_BG = "#0E0E10";
+const SHEET_BG = "#000000";
 const SURFACE = "#151518";
 const TEXT_PRIMARY = "#FFFFFF";
 const TEXT_SECONDARY = "rgba(255,255,255,0.65)";

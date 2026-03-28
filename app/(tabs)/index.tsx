@@ -119,6 +119,7 @@ const quickStyles = StyleSheet.create({
   btnActive: { borderColor: ACCENT },
 });
 
+
 /* ─────────────────────────────────────────────────
    Suggestion row (shared between origin & dest lists)
    ───────────────────────────────────────────────── */
@@ -203,6 +204,7 @@ export default function HomeScreen() {
   const [stopsLoading, setStopsLoading] = useState(false);
 
   const [activeQuick, setActiveQuick] = useState<string | null>(null);
+
 
   const isButtonActive = selectedOrigin !== null && selectedStop !== null;
 
@@ -538,16 +540,30 @@ export default function HomeScreen() {
             >
               {/* Origin suggestions */}
               {originSuggestions.length > 0 && (
-                <View style={[styles.suggestionBox, { marginBottom: 12 }]}>
-                  {originSuggestions.map((stop) => (
-                    <SuggestionRow
-                      key={stop.id}
-                      icon="bus-stop"
-                      label={stop.name}
-                      sublabel={`${Math.round(stop.distanceMeters)}m away`}
-                      onPress={() => handleOriginSelect(stop)}
+                <View style={[styles.suggestionBox, { maxHeight: 116, marginBottom: 12 }]}>
+                  <ScrollView
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator
+                    indicatorStyle="white"
+                  >
+                    {originSuggestions.map((stop) => (
+                      <SuggestionRow
+                        key={stop.id}
+                        icon="bus-stop"
+                        label={stop.name}
+                        sublabel={`${Math.round(stop.distanceMeters)}m away`}
+                        onPress={() => handleOriginSelect(stop)}
+                      />
+                    ))}
+                  </ScrollView>
+                  {originSuggestions.length > 2 && (
+                    <LinearGradient
+                      colors={["transparent", SUGGESTION_BG]}
+                      style={styles.suggestionFade}
+                      pointerEvents="none"
                     />
-                  ))}
+                  )}
                 </View>
               )}
               {originFocused &&
@@ -640,18 +656,32 @@ export default function HomeScreen() {
                   <View
                     style={[
                       styles.suggestionBox,
-                      { marginTop: -8, marginBottom: 12 },
+                      { maxHeight: 116, marginTop: -8, marginBottom: 12 },
                     ]}
                   >
-                    {destSuggestions.map((stop) => (
-                      <SuggestionRow
-                        key={stop.id}
-                        icon="bus-stop"
-                        label={stop.name}
-                        sublabel={`${Math.round(stop.distanceMeters)}m away`}
-                        onPress={() => handleDestSelect(stop)}
+                    <ScrollView
+                      nestedScrollEnabled
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator
+                      indicatorStyle="white"
+                    >
+                      {destSuggestions.map((stop) => (
+                        <SuggestionRow
+                          key={stop.id}
+                          icon="bus-stop"
+                          label={stop.name}
+                          sublabel={`${Math.round(stop.distanceMeters)}m away`}
+                          onPress={() => handleDestSelect(stop)}
+                        />
+                      ))}
+                    </ScrollView>
+                    {destSuggestions.length > 2 && (
+                      <LinearGradient
+                        colors={["transparent", SUGGESTION_BG]}
+                        style={styles.suggestionFade}
+                        pointerEvents="none"
                       />
-                    ))}
+                    )}
                   </View>
                 )}
 
@@ -801,6 +831,16 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
     marginBottom: 12,
     overflow: "hidden",
+  },
+
+  suggestionFade: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 36,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
   },
 
   whereRow: {

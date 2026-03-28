@@ -11,6 +11,7 @@ import React, {
 import {
   ActivityIndicator,
   Dimensions,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -66,11 +67,13 @@ const BORDER = "rgba(255,255,255,0.12)";
 /* ── snap points ── */
 const SNAP_LOW = 140;
 const SNAP_MID = SCREEN_H * 0.46;
-const SNAP_HIGH = SCREEN_H * 0.65;
+const SNAP_HIGH = SCREEN_H * 0.95;
+const SNAP_KB = SCREEN_H * 0.9;
 
 const TY_HIGH = SCREEN_H - SNAP_HIGH;
 const TY_MID = SCREEN_H - SNAP_MID;
 const TY_LOW = SCREEN_H - SNAP_LOW;
+const TY_KB = SCREEN_H - SNAP_KB;
 
 const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
 
@@ -538,6 +541,22 @@ export default function JourneyScreen() {
     [translateY],
   );
 
+  /* ── Snap up when keyboard shows, back when it hides ── */
+  const preKBSnap = useRef(TY_LOW);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => {
+      preKBSnap.current = translateY.value;
+      translateY.value = withSpring(TY_KB, SPRING_CFG);
+    });
+    const hide = Keyboard.addListener("keyboardDidHide", () => {
+      translateY.value = withSpring(
+        Math.max(preKBSnap.current, TY_HIGH),
+        SPRING_CFG,
+      );
+    });
+    return () => { show.remove(); hide.remove(); };
+  }, []);
+
   /* ── Edit shortcut handlers ── */
   const handleEditStart = useCallback(() => {
     isSectionExpanded.value = true;
@@ -812,6 +831,8 @@ export default function JourneyScreen() {
           onStartJourney={handleStartJourney}
           onEditStart={handleEditStart}
           onEditEnd={handleEditClose}
+          onFieldFocus={() => { translateY.value = withSpring(TY_KB, SPRING_CFG); }}
+          onFieldBlur={() => { translateY.value = withSpring(TY_HIGH, SPRING_CFG); }}
         />
         <View style={{ height: 40 }} />
         <ActiveJourneySection

@@ -1,6 +1,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useState } from "react";
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useCallback, useState } from "react";
 import {
+    Keyboard,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -9,10 +11,13 @@ import {
     View,
 } from "react-native";
 
+import { loadAllStops, type NearbyStop } from "@/services/api/stops";
+
 /* ───────────── theme ───────────── */
 const ACCENT = "#c1ec72";
 const BG = "#000000";
 const SURFACE = "#151518";
+const SUGGESTION_BG = "#1A1A1D";
 const TEXT_PRIMARY = "#FFFFFF";
 const TEXT_SECONDARY = "rgba(255,255,255,0.65)";
 const BORDER = "rgba(255,255,255,0.12)";
@@ -49,6 +54,98 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
     destination: "Quatre Bornes",
   },
 ];
+
+/* ───────────── SuggestionList ───────────── */
+function SuggestionList({
+  suggestions,
+  onSelect,
+}: {
+  suggestions: NearbyStop[];
+  onSelect: (name: string) => void;
+}) {
+  if (suggestions.length === 0) return null;
+  return (
+    <View style={sugStyles.box}>
+      <ScrollView
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator
+        indicatorStyle="white"
+        style={{ maxHeight: 116 }}
+      >
+        {suggestions.map((stop) => (
+          <Pressable
+            key={stop.id}
+            onPress={() => onSelect(stop.name)}
+            style={sugStyles.row}
+          >
+            <View style={sugStyles.iconWrap}>
+              <MaterialCommunityIcons
+                name="bus-stop"
+                size={14}
+                color={TEXT_SECONDARY}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={sugStyles.label} numberOfLines={1}>
+                {stop.name}
+              </Text>
+              <Text style={sugStyles.sublabel} numberOfLines={1}>
+                {Math.round(stop.distanceMeters)}m away
+              </Text>
+            </View>
+          </Pressable>
+        ))}
+      </ScrollView>
+      {suggestions.length > 2 && (
+        <LinearGradient
+          colors={["transparent", SUGGESTION_BG]}
+          style={sugStyles.fade}
+          pointerEvents="none"
+        />
+      )}
+    </View>
+  );
+}
+const sugStyles = StyleSheet.create({
+  box: {
+    backgroundColor: SUGGESTION_BG,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginTop: 4,
+    marginBottom: 4,
+    overflow: "hidden",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+  },
+  iconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  label: { color: TEXT_PRIMARY, fontSize: 13 },
+  sublabel: { color: TEXT_SECONDARY, fontSize: 11, marginTop: 1 },
+  fade: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 32,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+});
 
 /* ───────────── sub-components ───────────── */
 
@@ -109,87 +206,102 @@ function EditCard({
   shortcut,
   editOrigin,
   editDest,
+  allStops,
+  onLoadStops,
   onOriginChange,
   onDestChange,
   onSave,
   onDelete,
   onCancel,
+  onFieldFocus,
+  onFieldBlur,
 }: {
   shortcut: Shortcut;
   editOrigin: string;
   editDest: string;
+  allStops: NearbyStop[];
+  onLoadStops: () => void;
   onOriginChange: (t: string) => void;
   onDestChange: (t: string) => void;
   onSave: () => void;
   onDelete: () => void;
   onCancel: () => void;
+  onFieldFocus?: () => void;
+  onFieldBlur?: () => void;
 }) {
+  const [originSuggestions, setOriginSuggestions] = useState<NearbyStop[]>([]);
+  const [destSuggestions, setDestSuggestions] = useState<NearbyStop[]>([]);
+
+  const handleOriginChange = (text: string) => {
+    onOriginChange(text);
+    setDestSuggestions([]);
+    if (!text.trim()) { setOriginSuggestions([]); return; }
+    const q = text.toLowerCase();
+    setOriginSuggestions(allStops.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6));
+  };
+
+  const handleDestChange = (text: string) => {
+    onDestChange(text);
+    setOriginSuggestions([]);
+    if (!text.trim()) { setDestSuggestions([]); return; }
+    const q = text.toLowerCase();
+    setDestSuggestions(allStops.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6));
+  };
+
   return (
     <View style={styles.editCard}>
       <View style={styles.editHeader}>
         <View style={styles.editIconWrap}>
-          <MaterialCommunityIcons
-            name={shortcut.icon}
-            size={20}
-            color={ACCENT}
-          />
+          <MaterialCommunityIcons name={shortcut.icon} size={20} color={ACCENT} />
         </View>
         <Text style={styles.editTitle}>Edit {shortcut.label}</Text>
         <Pressable onPress={onCancel} hitSlop={8}>
-          <MaterialCommunityIcons
-            name="close"
-            size={20}
-            color={TEXT_SECONDARY}
-          />
+          <MaterialCommunityIcons name="close" size={20} color={TEXT_SECONDARY} />
         </Pressable>
       </View>
 
       <View style={styles.editField}>
-        <MaterialCommunityIcons
-          name="circle-outline"
-          size={14}
-          color={ACCENT}
-          style={{ marginRight: 8 }}
-        />
+        <MaterialCommunityIcons name="circle-outline" size={14} color={ACCENT} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.editInput}
           value={editOrigin}
-          onChangeText={onOriginChange}
+          onChangeText={handleOriginChange}
           placeholder="Origin"
           placeholderTextColor="rgba(255,255,255,0.3)"
           selectionColor={ACCENT}
+          onFocus={() => { onLoadStops(); onFieldFocus?.(); }}
+          onBlur={() => { setOriginSuggestions([]); onFieldBlur?.(); }}
         />
       </View>
+      <SuggestionList
+        suggestions={originSuggestions}
+        onSelect={(name) => { onOriginChange(name); setOriginSuggestions([]); Keyboard.dismiss(); }}
+      />
+
       <View style={styles.editField}>
-        <MaterialCommunityIcons
-          name="map-marker"
-          size={14}
-          color={TEXT_SECONDARY}
-          style={{ marginRight: 8 }}
-        />
+        <MaterialCommunityIcons name="map-marker" size={14} color={TEXT_SECONDARY} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.editInput}
           value={editDest}
-          onChangeText={onDestChange}
+          onChangeText={handleDestChange}
           placeholder="Destination"
           placeholderTextColor="rgba(255,255,255,0.3)"
           selectionColor={ACCENT}
+          onFocus={() => { onLoadStops(); onFieldFocus?.(); }}
+          onBlur={() => { setDestSuggestions([]); onFieldBlur?.(); }}
         />
       </View>
+      <SuggestionList
+        suggestions={destSuggestions}
+        onSelect={(name) => { onDestChange(name); setDestSuggestions([]); Keyboard.dismiss(); }}
+      />
 
       <View style={styles.editActions}>
         <Pressable
           onPress={onDelete}
-          style={({ pressed }) => [
-            styles.deleteBtn,
-            pressed && { opacity: 0.7 },
-          ]}
+          style={({ pressed }) => [styles.deleteBtn, pressed && { opacity: 0.7 }]}
         >
-          <MaterialCommunityIcons
-            name="trash-can-outline"
-            size={16}
-            color="#ff6b6b"
-          />
+          <MaterialCommunityIcons name="trash-can-outline" size={16} color="#ff6b6b" />
         </Pressable>
         <Pressable
           onPress={onSave}
@@ -206,22 +318,48 @@ function AddNewForm({
   newLabel,
   newOrigin,
   newDest,
+  allStops,
+  onLoadStops,
   onLabelChange,
   onOriginChange,
   onDestChange,
   onSave,
   onCancel,
+  onFieldFocus,
+  onFieldBlur,
 }: {
   newLabel: string;
   newOrigin: string;
   newDest: string;
+  allStops: NearbyStop[];
+  onLoadStops: () => void;
   onLabelChange: (t: string) => void;
   onOriginChange: (t: string) => void;
   onDestChange: (t: string) => void;
   onSave: () => void;
   onCancel: () => void;
+  onFieldFocus?: () => void;
+  onFieldBlur?: () => void;
 }) {
   const isValid = newLabel.trim() && newOrigin.trim() && newDest.trim();
+  const [originSuggestions, setOriginSuggestions] = useState<NearbyStop[]>([]);
+  const [destSuggestions, setDestSuggestions] = useState<NearbyStop[]>([]);
+
+  const handleOriginChange = (text: string) => {
+    onOriginChange(text);
+    setDestSuggestions([]);
+    if (!text.trim()) { setOriginSuggestions([]); return; }
+    const q = text.toLowerCase();
+    setOriginSuggestions(allStops.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6));
+  };
+
+  const handleDestChange = (text: string) => {
+    onDestChange(text);
+    setOriginSuggestions([]);
+    if (!text.trim()) { setDestSuggestions([]); return; }
+    const q = text.toLowerCase();
+    setDestSuggestions(allStops.filter((s) => s.name.toLowerCase().includes(q)).slice(0, 6));
+  };
 
   return (
     <View style={styles.editCard}>
@@ -231,21 +369,12 @@ function AddNewForm({
         </View>
         <Text style={styles.editTitle}>New Shortcut</Text>
         <Pressable onPress={onCancel} hitSlop={8}>
-          <MaterialCommunityIcons
-            name="close"
-            size={20}
-            color={TEXT_SECONDARY}
-          />
+          <MaterialCommunityIcons name="close" size={20} color={TEXT_SECONDARY} />
         </Pressable>
       </View>
 
       <View style={styles.editField}>
-        <MaterialCommunityIcons
-          name="label-outline"
-          size={14}
-          color={ACCENT}
-          style={{ marginRight: 8 }}
-        />
+        <MaterialCommunityIcons name="label-outline" size={14} color={ACCENT} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.editInput}
           value={newLabel}
@@ -253,40 +382,46 @@ function AddNewForm({
           placeholder="Label (e.g. Gym)"
           placeholderTextColor="rgba(255,255,255,0.3)"
           selectionColor={ACCENT}
+          onFocus={onFieldFocus}
+          onBlur={onFieldBlur}
         />
       </View>
+
       <View style={styles.editField}>
-        <MaterialCommunityIcons
-          name="circle-outline"
-          size={14}
-          color={ACCENT}
-          style={{ marginRight: 8 }}
-        />
+        <MaterialCommunityIcons name="circle-outline" size={14} color={ACCENT} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.editInput}
           value={newOrigin}
-          onChangeText={onOriginChange}
+          onChangeText={handleOriginChange}
           placeholder="Origin"
           placeholderTextColor="rgba(255,255,255,0.3)"
           selectionColor={ACCENT}
+          onFocus={() => { onLoadStops(); onFieldFocus?.(); }}
+          onBlur={() => { setOriginSuggestions([]); onFieldBlur?.(); }}
         />
       </View>
+      <SuggestionList
+        suggestions={originSuggestions}
+        onSelect={(name) => { onOriginChange(name); setOriginSuggestions([]); Keyboard.dismiss(); }}
+      />
+
       <View style={styles.editField}>
-        <MaterialCommunityIcons
-          name="map-marker"
-          size={14}
-          color={TEXT_SECONDARY}
-          style={{ marginRight: 8 }}
-        />
+        <MaterialCommunityIcons name="map-marker" size={14} color={TEXT_SECONDARY} style={{ marginRight: 8 }} />
         <TextInput
           style={styles.editInput}
           value={newDest}
-          onChangeText={onDestChange}
+          onChangeText={handleDestChange}
           placeholder="Destination"
           placeholderTextColor="rgba(255,255,255,0.3)"
           selectionColor={ACCENT}
+          onFocus={() => { onLoadStops(); onFieldFocus?.(); }}
+          onBlur={() => { setDestSuggestions([]); onFieldBlur?.(); }}
         />
       </View>
+      <SuggestionList
+        suggestions={destSuggestions}
+        onSelect={(name) => { onDestChange(name); setDestSuggestions([]); Keyboard.dismiss(); }}
+      />
 
       <Pressable
         onPress={onSave}
@@ -311,6 +446,8 @@ interface ShortcutsSectionProps {
   onStartJourney: (shortcut: Shortcut) => void;
   onEditStart?: () => void;
   onEditEnd?: () => void;
+  onFieldFocus?: () => void;
+  onFieldBlur?: () => void;
 }
 
 export default function ShortcutsSection({
@@ -319,6 +456,8 @@ export default function ShortcutsSection({
   onStartJourney,
   onEditStart,
   onEditEnd,
+  onFieldFocus,
+  onFieldBlur,
 }: ShortcutsSectionProps) {
   /* ── Edit state ── */
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -330,6 +469,25 @@ export default function ShortcutsSection({
   const [newLabel, setNewLabel] = useState("");
   const [newOrigin, setNewOrigin] = useState("");
   const [newDest, setNewDest] = useState("");
+
+  /* ── Stop data (loaded once on first field focus) ── */
+  const [allStops, setAllStops] = useState<NearbyStop[]>([]);
+  const [stopsLoaded, setStopsLoaded] = useState(false);
+  const [stopsLoading, setStopsLoading] = useState(false);
+
+  const loadStops = useCallback(async () => {
+    if (stopsLoaded || stopsLoading) return;
+    setStopsLoading(true);
+    try {
+      const stops = await loadAllStops(-20.2, 57.55);
+      setAllStops(stops);
+      setStopsLoaded(true);
+    } catch {
+      // allow retry on next focus
+    } finally {
+      setStopsLoading(false);
+    }
+  }, [stopsLoaded, stopsLoading]);
 
   /* ── Handlers ── */
   const handleEditToggle = (sc: Shortcut) => {
@@ -399,22 +557,24 @@ export default function ShortcutsSection({
       {/* Section Label */}
       <Text style={styles.sectionLabel}>Shortcuts</Text>
 
-      {/* Tiles Grid */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.tilesScrollContent}
-      >
-        {shortcuts.map((sc) => (
-          <ShortcutTile
-            key={sc.id}
-            shortcut={sc}
-            onTap={() => onStartJourney(sc)}
-            onEditPress={() => handleEditToggle(sc)}
-          />
-        ))}
-        <AddNewTile onPress={handleAddNew} />
-      </ScrollView>
+      {/* Tiles Grid — hidden while editing or adding */}
+      {!editingId && !adding && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tilesScrollContent}
+        >
+          {shortcuts.map((sc) => (
+            <ShortcutTile
+              key={sc.id}
+              shortcut={sc}
+              onTap={() => onStartJourney(sc)}
+              onEditPress={() => handleEditToggle(sc)}
+            />
+          ))}
+          <AddNewTile onPress={handleAddNew} />
+        </ScrollView>
+      )}
 
       {/* Edit Card */}
       {editingId && (
@@ -422,11 +582,15 @@ export default function ShortcutsSection({
           shortcut={shortcuts.find((s) => s.id === editingId)!}
           editOrigin={editOrigin}
           editDest={editDest}
+          allStops={allStops}
+          onLoadStops={loadStops}
           onOriginChange={setEditOrigin}
           onDestChange={setEditDest}
           onSave={() => handleSaveEdit(editingId)}
           onDelete={() => handleDelete(editingId)}
           onCancel={handleCancelEdit}
+          onFieldFocus={onFieldFocus}
+          onFieldBlur={onFieldBlur}
         />
       )}
 
@@ -436,11 +600,15 @@ export default function ShortcutsSection({
           newLabel={newLabel}
           newOrigin={newOrigin}
           newDest={newDest}
+          allStops={allStops}
+          onLoadStops={loadStops}
           onLabelChange={setNewLabel}
           onOriginChange={setNewOrigin}
           onDestChange={setNewDest}
           onSave={handleSaveNew}
           onCancel={handleCancelAdd}
+          onFieldFocus={onFieldFocus}
+          onFieldBlur={onFieldBlur}
         />
       )}
     </View>
@@ -538,12 +706,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.04)",
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: BORDER,
-    paddingHorizontal: 12,
-    height: 44,
-    marginBottom: 8,
+    paddingHorizontal: 14,
+    height: 50,
+    marginBottom: 12,
   },
   editInput: {
     flex: 1,

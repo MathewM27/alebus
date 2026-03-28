@@ -46,7 +46,7 @@ const BORDER = "rgba(255,255,255,0.12)";
 const SUGGESTION_BG = "#1A1A1D";
 
 /* snap points – heights measured from the bottom of the screen */
-const SNAP_LOW = 140;
+const SNAP_LOW = 160;
 const SNAP_MID = SCREEN_H * 0.5;
 const SNAP_HIGH = SCREEN_H * 0.5;
 const SNAP_KB = SCREEN_H * 0.9;
@@ -801,6 +801,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
     textAlign: "center",
+    paddingBottom: 12,
   },
 
   searchWrap: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 4 },

@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: BORDER,
     paddingVertical: 18,
-    marginTop: 16,
+    marginTop: 8,
     gap: 8,
   },
   inactiveText: {

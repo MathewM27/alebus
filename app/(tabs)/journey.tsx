@@ -13,7 +13,6 @@ import {
   Dimensions,
   Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -22,6 +21,7 @@ import {
   Gesture,
   GestureDetector,
   GestureHandlerRootView,
+  ScrollView,
 } from "react-native-gesture-handler";
 import Animated, {
   Extrapolation,
@@ -65,12 +65,14 @@ const TEXT_SECONDARY = "rgba(255,255,255,0.65)";
 const BORDER = "rgba(255,255,255,0.12)";
 
 /* ── snap points ── */
-const SNAP_LOW = 140;
+const SNAP_LOW = 160;
 const SNAP_MID = SCREEN_H * 0.46;
-const SNAP_HIGH = SCREEN_H * 0.95;
-const SNAP_KB = SCREEN_H * 0.9;
+const SNAP_HIGH_EDIT = SCREEN_H * 0.6;   // shortcuts edit form
+const SNAP_HIGH_JOURNEY = SCREEN_H * 0.72; // active journey recommendations
+const SNAP_KB = SCREEN_H * 0.5;
 
-const TY_HIGH = SCREEN_H - SNAP_HIGH;
+const TY_HIGH = SCREEN_H - SNAP_HIGH_EDIT;
+const TY_HIGH_JOURNEY = SCREEN_H - SNAP_HIGH_JOURNEY;
 const TY_MID = SCREEN_H - SNAP_MID;
 const TY_LOW = SCREEN_H - SNAP_LOW;
 const TY_KB = SCREEN_H - SNAP_KB;
@@ -163,7 +165,7 @@ export default function JourneyScreen() {
   // Update max snap when recommendations change
   const TY_ACTIVE = SCREEN_H * 0.5; // 50% height when journey active
   useEffect(() => {
-    maxSnapY.value = hasRecommendations ? TY_HIGH : TY_MID;
+    maxSnapY.value = hasRecommendations ? TY_HIGH_JOURNEY : TY_MID;
     if (hasRecommendations) {
       translateY.value = withSpring(TY_ACTIVE, SPRING_CFG);
       titleOpacity.value = withTiming(0, { duration: 300 });
@@ -572,6 +574,7 @@ export default function JourneyScreen() {
   }, [snapTo]);
 
   /* ── Pan gesture ── */
+  /* ── Pan gesture ── */
   const pan = Gesture.Pan()
     .activeOffsetY([-10, 10])
     .failOffsetX([-15, 15])
@@ -897,12 +900,14 @@ export default function JourneyScreen() {
           </View>
 
           <View style={styles.headerWrap}>
-            <Animated.Text
-              style={[styles.headerTitle, titleStyle]}
-              pointerEvents={hasRecommendations ? "none" : "auto"}
-            >
-              Journeys
-            </Animated.Text>
+            <View style={styles.headerRow}>
+              <Animated.Text
+                style={[styles.headerTitle, titleStyle]}
+                pointerEvents={hasRecommendations ? "none" : "auto"}
+              >
+                Journeys
+              </Animated.Text>
+            </View>
             <Text style={styles.headerSubtitle}>
               {hasRecommendations
                 ? `${recommendations.length} bus${recommendations.length !== 1 ? "es" : ""} found`
@@ -910,7 +915,6 @@ export default function JourneyScreen() {
             </Text>
           </View>
 
-          {/* Expanded content */}
           <Animated.View style={[styles.expandedWrap, expandedOpacity]}>
             <ScrollView
               style={{ flex: 1 }}
@@ -987,7 +991,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 4,
     paddingBottom: 8,
+  },
+  headerRow: {
     alignItems: "center",
+    justifyContent: "center",
   },
   headerTitle: {
     color: TEXT_PRIMARY,
@@ -1001,7 +1008,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textAlign: "center",
   },
-  expandedWrap: { flex: 1, marginTop: 8 },
+  expandedWrap: { flex: 1 },
 
   centeredState: {
     marginTop: 40,

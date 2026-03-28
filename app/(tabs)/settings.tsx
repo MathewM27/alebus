@@ -49,7 +49,7 @@ const TEXT_SECONDARY = "rgba(255,255,255,0.65)";
 const BORDER = "rgba(255,255,255,0.12)";
 
 /* ── snap points ── */
-const SNAP_LOW = 140;
+const SNAP_LOW = 160;
 const SNAP_MID = SCREEN_H * 0.35;
 const SNAP_HIGH = SCREEN_H * 0.65;
 
@@ -691,6 +691,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
     textAlign: "center",
+    paddingBottom: 12,
   },
 
   /* Tiles */

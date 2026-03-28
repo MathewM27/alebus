@@ -366,8 +366,8 @@ const styles = StyleSheet.create({
   },
   distanceText: {
     color: ACCENT,
-    fontSize: 18,
-    fontWeight: "700",
+    fontSize: 14,
+    fontWeight: "600",
   },
   etaText: {
     color: TEXT_PRIMARY,

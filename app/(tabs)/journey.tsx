@@ -835,6 +835,7 @@ export default function JourneyScreen() {
               busDetails={null}
               busStopName={null}
               userStopName={null}
+              onEndTracking={handleEndTracking}
             />
             <View style={{ height: 20 }} />
           </>

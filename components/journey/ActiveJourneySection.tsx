@@ -98,7 +98,7 @@ export default function ActiveJourneySection({
         );
       })}
 
-      {/* End Tracking Button - below all recommendations */}
+      {/* End Tracking Button */}
       <Pressable
         style={({ pressed }) => [
           styles.endTrackingBtn,
@@ -375,24 +375,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  /* End Tracking Button */
-  endTrackingBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: SURFACE,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255,107,107,0.3)",
-    height: 48,
-    marginTop: 6,
-  },
-  endTrackingText: {
-    color: "#ff6b6b",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-
   /* Inactive recommendation cards */
   inactiveRecommendation: {
     backgroundColor: "rgba(255,255,255,0.03)",
@@ -448,5 +430,22 @@ const styles = StyleSheet.create({
   inactiveText: {
     color: TEXT_SECONDARY,
     fontSize: 14,
+  },
+
+  endTrackingBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: SURFACE,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,107,107,0.3)",
+    height: 48,
+    marginTop: 6,
+  },
+  endTrackingText: {
+    color: "#ff6b6b",
+    fontSize: 15,
+    fontWeight: "600",
   },
 });

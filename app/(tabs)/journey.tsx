@@ -148,6 +148,7 @@ export default function JourneyScreen() {
 
   /* ── Shortcuts state ── */
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS);
+  const [isEditingShortcut, setIsEditingShortcut] = useState(false);
 
   /* ── shared values ── */
   const translateY = useSharedValue(TY_LOW);
@@ -160,14 +161,14 @@ export default function JourneyScreen() {
   const hasRecommendations = recommendations.length > 0;
 
   // Update max snap when recommendations change
+  const TY_ACTIVE = SCREEN_H * 0.5; // 50% height when journey active
   useEffect(() => {
     maxSnapY.value = hasRecommendations ? TY_HIGH : TY_MID;
     if (hasRecommendations) {
-      translateY.value = withSpring(TY_MID, SPRING_CFG);
-      // Hide title when journey is active
+      translateY.value = withSpring(TY_ACTIVE, SPRING_CFG);
       titleOpacity.value = withTiming(0, { duration: 300 });
     } else {
-      // Show title when no active journeys
+      translateY.value = withSpring(TY_MID, SPRING_CFG);
       titleOpacity.value = withTiming(1, { duration: 300 });
     }
   }, [hasRecommendations]);
@@ -560,11 +561,13 @@ export default function JourneyScreen() {
   /* ── Edit shortcut handlers ── */
   const handleEditStart = useCallback(() => {
     isSectionExpanded.value = true;
+    setIsEditingShortcut(true);
     snapTo(TY_HIGH);
   }, [snapTo]);
 
   const handleEditClose = useCallback(() => {
     isSectionExpanded.value = false;
+    setIsEditingShortcut(false);
     snapTo(TY_MID);
   }, [snapTo]);
 
@@ -825,6 +828,17 @@ export default function JourneyScreen() {
 
     return (
       <>
+        {!isEditingShortcut && (
+          <>
+            <ActiveJourneySection
+              journeyRecommendations={null}
+              busDetails={null}
+              busStopName={null}
+              userStopName={null}
+            />
+            <View style={{ height: 20 }} />
+          </>
+        )}
         <ShortcutsSection
           shortcuts={shortcuts}
           onShortcutsChange={setShortcuts}
@@ -833,14 +847,6 @@ export default function JourneyScreen() {
           onEditEnd={handleEditClose}
           onFieldFocus={() => { translateY.value = withSpring(TY_KB, SPRING_CFG); }}
           onFieldBlur={() => { translateY.value = withSpring(TY_HIGH, SPRING_CFG); }}
-        />
-        <View style={{ height: 40 }} />
-        <ActiveJourneySection
-          journeyRecommendations={null}
-          busDetails={null}
-          busStopName={null}
-          userStopName={null}
-          onEndTracking={handleEndTracking}
         />
       </>
     );
@@ -1071,4 +1077,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
+
 });

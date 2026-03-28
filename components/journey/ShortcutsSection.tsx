@@ -2,13 +2,13 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useCallback, useState } from "react";
 import {
-    Keyboard,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 
 import { loadAllStops, type NearbyStop } from "@/services/api/stops";
@@ -46,13 +46,7 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
     origin: "Port Louis Terminal",
     destination: "Curepipe Central",
   },
-  {
-    id: "school",
-    icon: "school-outline",
-    label: "School",
-    origin: "Rose Hill Hub",
-    destination: "Quatre Bornes",
-  },
+ 
 ];
 
 /* ───────────── SuggestionList ───────────── */
@@ -129,7 +123,7 @@ const sugStyles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(173, 0, 0, 0.06)",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 10,
@@ -554,9 +548,6 @@ export default function ShortcutsSection({
 
   return (
     <View style={styles.container}>
-      {/* Section Label */}
-      <Text style={styles.sectionLabel}>Shortcuts</Text>
-
       {/* Tiles Grid — hidden while editing or adding */}
       {!editingId && !adding && (
         <ScrollView

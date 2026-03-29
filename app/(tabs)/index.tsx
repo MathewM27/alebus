@@ -907,16 +907,16 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 52,
     borderRadius: 16,
-    backgroundColor: "#c1ec72",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
+    borderColor: "rgba(255,255,255,0.12)",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 4,
   },
-  findButtonActive: { backgroundColor: ACCENT, borderColor: ACCENT },
-  findButtonText: { color: "#888888", fontSize: 16, fontWeight: "600" },
-  findButtonTextActive: { color: BG },
+  findButtonActive: { backgroundColor: "#ffffff", borderColor: "#ffffff" },
+  findButtonText: { color: "rgba(255,255,255,0.35)", fontSize: 16, fontWeight: "600" },
+  findButtonTextActive: { color: "#000000" },
 
   /* ── Home background ── */
   homeBg: {

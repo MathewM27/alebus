@@ -29,6 +29,10 @@ export interface Shortcut {
   label: string;
   origin: string;
   destination: string;
+  originStopId?: string;
+  originLat?: number;
+  originLon?: number;
+  destStopId?: string;
 }
 
 export const DEFAULT_SHORTCUTS: Shortcut[] = [
@@ -36,17 +40,16 @@ export const DEFAULT_SHORTCUTS: Shortcut[] = [
     id: "home",
     icon: "home-outline",
     label: "Home",
-    origin: "Curepipe Central",
-    destination: "Port Louis Terminal",
+    origin: "",
+    destination: "",
   },
   {
     id: "work",
     icon: "briefcase-outline",
     label: "Work",
-    origin: "Port Louis Terminal",
-    destination: "Curepipe Central",
+    origin: "",
+    destination: "",
   },
- 
 ];
 
 /* ───────────── SuggestionList ───────────── */
@@ -55,7 +58,7 @@ function SuggestionList({
   onSelect,
 }: {
   suggestions: NearbyStop[];
-  onSelect: (name: string) => void;
+  onSelect: (stop: NearbyStop) => void;
 }) {
   if (suggestions.length === 0) return null;
   return (
@@ -70,7 +73,7 @@ function SuggestionList({
         {suggestions.map((stop) => (
           <Pressable
             key={stop.id}
-            onPress={() => onSelect(stop.name)}
+            onPress={() => onSelect(stop)}
             style={sugStyles.row}
           >
             <View style={sugStyles.iconWrap}>
@@ -204,6 +207,8 @@ function EditCard({
   onLoadStops,
   onOriginChange,
   onDestChange,
+  onOriginSelect,
+  onDestSelect,
   onSave,
   onDelete,
   onCancel,
@@ -217,6 +222,8 @@ function EditCard({
   onLoadStops: () => void;
   onOriginChange: (t: string) => void;
   onDestChange: (t: string) => void;
+  onOriginSelect?: (stop: NearbyStop) => void;
+  onDestSelect?: (stop: NearbyStop) => void;
   onSave: () => void;
   onDelete: () => void;
   onCancel: () => void;
@@ -269,7 +276,7 @@ function EditCard({
       </View>
       <SuggestionList
         suggestions={originSuggestions}
-        onSelect={(name) => { onOriginChange(name); setOriginSuggestions([]); Keyboard.dismiss(); }}
+        onSelect={(stop) => { onOriginChange(stop.name); onOriginSelect?.(stop); setOriginSuggestions([]); Keyboard.dismiss(); }}
       />
 
       <View style={styles.editField}>
@@ -287,7 +294,7 @@ function EditCard({
       </View>
       <SuggestionList
         suggestions={destSuggestions}
-        onSelect={(name) => { onDestChange(name); setDestSuggestions([]); Keyboard.dismiss(); }}
+        onSelect={(stop) => { onDestChange(stop.name); onDestSelect?.(stop); setDestSuggestions([]); Keyboard.dismiss(); }}
       />
 
       <View style={styles.editActions}>
@@ -317,6 +324,8 @@ function AddNewForm({
   onLabelChange,
   onOriginChange,
   onDestChange,
+  onOriginSelect,
+  onDestSelect,
   onSave,
   onCancel,
   onFieldFocus,
@@ -330,6 +339,8 @@ function AddNewForm({
   onLabelChange: (t: string) => void;
   onOriginChange: (t: string) => void;
   onDestChange: (t: string) => void;
+  onOriginSelect?: (stop: NearbyStop) => void;
+  onDestSelect?: (stop: NearbyStop) => void;
   onSave: () => void;
   onCancel: () => void;
   onFieldFocus?: () => void;
@@ -396,7 +407,7 @@ function AddNewForm({
       </View>
       <SuggestionList
         suggestions={originSuggestions}
-        onSelect={(name) => { onOriginChange(name); setOriginSuggestions([]); Keyboard.dismiss(); }}
+        onSelect={(stop) => { onOriginChange(stop.name); onOriginSelect?.(stop); setOriginSuggestions([]); Keyboard.dismiss(); }}
       />
 
       <View style={styles.editField}>
@@ -414,7 +425,7 @@ function AddNewForm({
       </View>
       <SuggestionList
         suggestions={destSuggestions}
-        onSelect={(name) => { onDestChange(name); setDestSuggestions([]); Keyboard.dismiss(); }}
+        onSelect={(stop) => { onDestChange(stop.name); onDestSelect?.(stop); setDestSuggestions([]); Keyboard.dismiss(); }}
       />
 
       <Pressable
@@ -457,12 +468,16 @@ export default function ShortcutsSection({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editOrigin, setEditOrigin] = useState("");
   const [editDest, setEditDest] = useState("");
+  const [editOriginStop, setEditOriginStop] = useState<NearbyStop | null>(null);
+  const [editDestStop, setEditDestStop] = useState<NearbyStop | null>(null);
 
   /* ── Add new state ── */
   const [adding, setAdding] = useState(false);
   const [newLabel, setNewLabel] = useState("");
   const [newOrigin, setNewOrigin] = useState("");
   const [newDest, setNewDest] = useState("");
+  const [newOriginStop, setNewOriginStop] = useState<NearbyStop | null>(null);
+  const [newDestStop, setNewDestStop] = useState<NearbyStop | null>(null);
 
   /* ── Stop data (loaded once on first field focus) ── */
   const [allStops, setAllStops] = useState<NearbyStop[]>([]);
@@ -500,10 +515,20 @@ export default function ShortcutsSection({
   const handleSaveEdit = (id: string) => {
     onShortcutsChange(
       shortcuts.map((s) =>
-        s.id === id ? { ...s, origin: editOrigin, destination: editDest } : s,
+        s.id === id ? {
+          ...s,
+          origin: editOrigin,
+          destination: editDest,
+          originStopId: editOriginStop?.id,
+          originLat: editOriginStop?.lat,
+          originLon: editOriginStop?.lon,
+          destStopId: editDestStop?.id,
+        } : s,
       ),
     );
     setEditingId(null);
+    setEditOriginStop(null);
+    setEditDestStop(null);
     onEditEnd?.();
   };
 
@@ -530,9 +555,15 @@ export default function ShortcutsSection({
       label: newLabel.trim(),
       origin: newOrigin.trim(),
       destination: newDest.trim(),
+      originStopId: newOriginStop?.id,
+      originLat: newOriginStop?.lat,
+      originLon: newOriginStop?.lon,
+      destStopId: newDestStop?.id,
     };
     onShortcutsChange([...shortcuts, newSc]);
     setAdding(false);
+    setNewOriginStop(null);
+    setNewDestStop(null);
     onEditEnd?.();
   };
 
@@ -577,6 +608,8 @@ export default function ShortcutsSection({
           onLoadStops={loadStops}
           onOriginChange={setEditOrigin}
           onDestChange={setEditDest}
+          onOriginSelect={setEditOriginStop}
+          onDestSelect={setEditDestStop}
           onSave={() => handleSaveEdit(editingId)}
           onDelete={() => handleDelete(editingId)}
           onCancel={handleCancelEdit}
@@ -596,6 +629,8 @@ export default function ShortcutsSection({
           onLabelChange={setNewLabel}
           onOriginChange={setNewOrigin}
           onDestChange={setNewDest}
+          onOriginSelect={setNewOriginStop}
+          onDestSelect={setNewDestStop}
           onSave={handleSaveNew}
           onCancel={handleCancelAdd}
           onFieldFocus={onFieldFocus}

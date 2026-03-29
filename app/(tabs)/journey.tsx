@@ -45,9 +45,15 @@ import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
 import {
   cancelJourney,
   createJourney,
+  getJourneyTracking,
   loadActiveJourneys,
   type CreateJourneyResponse,
 } from "@/services/api/journey";
+import {
+  getMeProfile,
+  setShortcuts as saveShortcutsToBackend,
+  savedLocationsToShortcuts,
+} from "@/services/api/users";
 import { fetchRouteStops, type RouteStop } from "@/services/api/stops";
 import { busMuxClient } from "@/services/ws/busMuxClient";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
@@ -67,15 +73,15 @@ const BORDER = "rgba(255,255,255,0.12)";
 /* ── snap points ── */
 const SNAP_LOW = 160;
 const SNAP_MID = SCREEN_H * 0.46;
-const SNAP_HIGH_EDIT = SCREEN_H * 0.6;   // shortcuts edit form
+const SNAP_HIGH_EDIT = SCREEN_H * 0.9;   // shortcuts edit form
 const SNAP_HIGH_JOURNEY = SCREEN_H * 0.72; // active journey recommendations
-const SNAP_KB = SCREEN_H * 0.5;
+
 
 const TY_HIGH = SCREEN_H - SNAP_HIGH_EDIT;
 const TY_HIGH_JOURNEY = SCREEN_H - SNAP_HIGH_JOURNEY;
 const TY_MID = SCREEN_H - SNAP_MID;
 const TY_LOW = SCREEN_H - SNAP_LOW;
-const TY_KB = SCREEN_H - SNAP_KB;
+
 
 const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
 
@@ -151,6 +157,26 @@ export default function JourneyScreen() {
   /* ── Shortcuts state ── */
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS);
   const [isEditingShortcut, setIsEditingShortcut] = useState(false);
+
+  // Load shortcuts from backend on mount (once user is authenticated)
+  useEffect(() => {
+    if (!authUserId) return;
+    getMeProfile()
+      .then((profile) => {
+        const loaded = savedLocationsToShortcuts(profile.savedLocations);
+        if (loaded.length > 0) setShortcuts(loaded);
+      })
+      .catch(() => {
+        // Network failure — keep defaults, will retry on next mount
+      });
+  }, [authUserId]);
+
+  const handleShortcutsChange = useCallback((updated: Shortcut[]) => {
+    setShortcuts(updated);
+    saveShortcutsToBackend(updated).catch(() => {
+      // Fire-and-forget — local state is already updated
+    });
+  }, []);
 
   /* ── shared values ── */
   const translateY = useSharedValue(TY_LOW);
@@ -544,27 +570,23 @@ export default function JourneyScreen() {
     [translateY],
   );
 
-  /* ── Snap up when keyboard shows, back when it hides ── */
-  const preKBSnap = useRef(TY_LOW);
+  /* ── Snap back when keyboard hides ── */
+  const isEditingShortcutRef = useRef(false);
+  useEffect(() => { isEditingShortcutRef.current = isEditingShortcut; }, [isEditingShortcut]);
+
   useEffect(() => {
-    const show = Keyboard.addListener("keyboardDidShow", () => {
-      preKBSnap.current = translateY.value;
-      translateY.value = withSpring(TY_KB, SPRING_CFG);
-    });
     const hide = Keyboard.addListener("keyboardDidHide", () => {
-      translateY.value = withSpring(
-        Math.max(preKBSnap.current, TY_HIGH),
-        SPRING_CFG,
-      );
+      const target = isEditingShortcutRef.current ? TY_HIGH : TY_MID;
+      translateY.value = withSpring(target, SPRING_CFG);
     });
-    return () => { show.remove(); hide.remove(); };
+    return () => { hide.remove(); };
   }, []);
 
   /* ── Edit shortcut handlers ── */
   const handleEditStart = useCallback(() => {
     isSectionExpanded.value = true;
     setIsEditingShortcut(true);
-    snapTo(TY_HIGH);
+    snapTo(TY_MID);
   }, [snapTo]);
 
   const handleEditClose = useCallback(() => {
@@ -576,6 +598,7 @@ export default function JourneyScreen() {
   /* ── Pan gesture ── */
   /* ── Pan gesture ── */
   const pan = Gesture.Pan()
+    .enabled(!isEditingShortcut)
     .activeOffsetY([-10, 10])
     .failOffsetX([-15, 15])
     .onStart(() => {
@@ -693,9 +716,27 @@ export default function JourneyScreen() {
     translateY.value = withSpring(TY_MID, SPRING_CFG);
   }, [journeyId, recommendations]);
 
-  const handleStartJourney = (sc: Shortcut) => {
-    console.log("[journey] shortcut tapped:", sc.origin, "→", sc.destination);
-  };
+  const handleStartJourney = useCallback(async (sc: Shortcut) => {
+    if (!sc.originLat || !sc.originLon || !sc.destStopId) {
+      console.warn("[journey] shortcut missing stop data — please edit and reselect stops");
+      return;
+    }
+    if (!authUserId) return;
+    try {
+      setError(null);
+      const res = await createJourney({
+        userId: authUserId,
+        originLat: sc.originLat,
+        originLon: sc.originLon,
+        destinationStopId: sc.destStopId,
+      });
+      setJourneyId(res.journeyId);
+      const tracking = await getJourneyTracking(res.journeyId);
+      if (tracking) setRecommendations([tracking]);
+    } catch (e: any) {
+      setError(e?.message ?? "Failed to start journey");
+    }
+  }, [authUserId]);
 
   /* ── Map positions ── */
   // userPosition: prefer nav params (new journey); fall back to route stop coords
@@ -845,12 +886,12 @@ export default function JourneyScreen() {
         )}
         <ShortcutsSection
           shortcuts={shortcuts}
-          onShortcutsChange={setShortcuts}
+          onShortcutsChange={handleShortcutsChange}
           onStartJourney={handleStartJourney}
           onEditStart={handleEditStart}
           onEditEnd={handleEditClose}
-          onFieldFocus={() => { translateY.value = withSpring(TY_KB, SPRING_CFG); }}
-          onFieldBlur={() => { translateY.value = withSpring(TY_HIGH, SPRING_CFG); }}
+          onFieldFocus={() => { translateY.value = withSpring(TY_HIGH, SPRING_CFG); }}
+          onFieldBlur={() => { translateY.value = withSpring(TY_MID, SPRING_CFG); }}
         />
       </>
     );

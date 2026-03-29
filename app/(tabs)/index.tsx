@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
+  Image,
   Keyboard,
   Pressable,
   ScrollView,
@@ -31,6 +32,7 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import Map from "@/components/Map";
 import { loadAllStops, type NearbyStop } from "@/services/api/stops";
 
 /* ───────────── constants ───────────── */
@@ -423,6 +425,9 @@ export default function HomeScreen() {
       <View style={styles.homeBg}>
         {/* ── Top section (greeting + map card) ── */}
         <View style={[styles.homeTopSection, { paddingTop: insets.top + 16 }]}>
+          {/* App name */}
+          <Text style={styles.appName}>Alebus</Text>
+
           {/* Greeting */}
           <View style={styles.homeHeader}>
             <View>
@@ -430,23 +435,25 @@ export default function HomeScreen() {
               <Text style={styles.homeGreetingSub}>Where are you heading?</Text>
             </View>
             <View style={styles.homeHeaderIcon}>
-              <MaterialCommunityIcons name="bus" size={22} color={ACCENT} />
+              <Image source={require("@/assets/images/splash-icon-1.png")} style={{ width: 28, height: 28, resizeMode: "contain" }} />
             </View>
           </View>
 
           {/* Map preview card */}
           <View style={styles.mapCard}>
-            <LinearGradient
-              colors={["#1e1e1e", "#181818"]}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+            <Map
+              style={StyleSheet.absoluteFillObject}
+              center={[57.55, -20.25]}
+              zoom={12}
             />
-            <MaterialCommunityIcons name="map-outline" size={48} color="rgba(255,255,255,0.08)" style={styles.mapCardIcon} />
-            <View style={styles.mapCardBadge}>
+            <View style={styles.mapCardOverlay} pointerEvents="none" />
+            <Pressable
+              style={styles.mapCardBadge}
+              onPress={() => router.push("/(tabs)/journey")}
+            >
               <MaterialCommunityIcons name="map-marker" size={14} color={ACCENT} />
               <Text style={styles.mapCardBadgeText}>Open map in Journey tab</Text>
-            </View>
+            </Pressable>
           </View>
         </View>
 
@@ -916,9 +923,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   homeTopSection: {
-    backgroundColor: "#111111",
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    backgroundColor: "rgb(255, 255, 255)",
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
   },
   homeBottomSection: {
     flex: 1,
@@ -932,35 +941,52 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 20,
   },
+  appName: {
+    color: "#000000",
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 2,
+    textTransform: "uppercase",
+    textAlign: "center",
+    marginBottom: 12,
+    paddingBottom: 8,
+    
+   
+   
+  },
   homeGreeting: {
-    color: TEXT_PRIMARY,
+    color: "#000000",
     fontSize: 22,
     fontWeight: "700",
   },
   homeGreetingSub: {
-    color: TEXT_SECONDARY,
+    color: "rgba(0,0,0,0.55)",
     fontSize: 13,
     marginTop: 2,
   },
   homeHeaderIcon: {
-    width: 44,
+    width: 74,
     height: 44,
     borderRadius: 22,
-    backgroundColor: SURFACE,
+    backgroundColor: "rgba(0,0,0,0.06)",
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: "rgba(0,0,0,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
   mapCard: {
-    height: 140,
-    borderRadius: 20,
+    height: 200,
+    borderRadius: 28,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: BORDER,
-    marginBottom: 20,
+    borderColor: "rgba(0,0,0,0.1)",
+    marginBottom: 4,
     alignItems: "center",
     justifyContent: "center",
+  },
+  mapCardOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.35)",
   },
   mapCardIcon: {
     position: "absolute",
@@ -969,15 +995,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 12,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    paddingHorizontal: 6,
     paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: "rgba(0,0,0,0.15)",
   },
   mapCardBadgeText: {
-    color: TEXT_SECONDARY,
+    color: "rgba(255,255,255,0.85)",
     fontSize: 12,
   },
   recentHeader: {

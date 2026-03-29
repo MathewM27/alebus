@@ -95,7 +95,7 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   wrapper: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 10,
     paddingTop: 8,
     backgroundColor: 'transparent',
   },

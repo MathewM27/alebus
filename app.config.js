@@ -22,10 +22,10 @@ module.exports = {
     },
     android: {
       adaptiveIcon: {
-        backgroundColor: '#E6F4FE',
-        foregroundImage: './assets/images/android-icon-foreground.png',
-        backgroundImage: './assets/images/android-icon-background.png',
-        monochromeImage: './assets/images/android-icon-monochrome.png',
+        backgroundColor: '#000000',
+        foregroundImage: './assets/images/adaptive-icon.png',
+        backgroundImage: './assets/images/adaptive-icon.png',
+        monochromeImage: './assets/images/adaptive-icon.png',
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
@@ -48,10 +48,10 @@ module.exports = {
           image: './assets/images/icon.png',
           imageWidth: 200,
           resizeMode: 'contain',
-          backgroundColor: '#ffffff',
+          backgroundColor: '#000000',
           dark: {
-            image: './assets/images/splash-icon.png',
-            backgroundColor: '#151718',
+            image: './assets/images/splash-icon-1.png',
+            backgroundColor: '#000000',
           },
         },
       ],

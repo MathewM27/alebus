@@ -31,7 +31,6 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import Map from "@/components/Map";
 import { loadAllStops, type NearbyStop } from "@/services/api/stops";
 
 /* ───────────── constants ───────────── */
@@ -60,28 +59,6 @@ const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
 
 /* ───────────── small sub-components ───────────── */
 
-function MenuButton({ onPress, top }: { onPress: () => void; top: number }) {
-  return (
-    <View style={[menuStyles.wrap, { top: top + 8 }]}>
-      <Pressable onPress={onPress} style={menuStyles.btn}>
-        <MaterialCommunityIcons name="menu" size={22} color={TEXT_PRIMARY} />
-      </Pressable>
-    </View>
-  );
-}
-const menuStyles = StyleSheet.create({
-  wrap: { position: "absolute", left: 16, zIndex: 10 },
-  btn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    backgroundColor: SURFACE,
-    borderWidth: 1,
-    borderColor: BORDER,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
 
 function QuickActionButton({
   icon,
@@ -442,12 +419,63 @@ export default function HomeScreen() {
     <GestureHandlerRootView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* Map */}
-      <Map />
-      <View style={styles.mapOverlay} pointerEvents="none" />
+      {/* Background home content */}
+      <View style={styles.homeBg}>
+        {/* ── Top section (greeting + map card) ── */}
+        <View style={[styles.homeTopSection, { paddingTop: insets.top + 16 }]}>
+          {/* Greeting */}
+          <View style={styles.homeHeader}>
+            <View>
+              <Text style={styles.homeGreeting}>Good day</Text>
+              <Text style={styles.homeGreetingSub}>Where are you heading?</Text>
+            </View>
+            <View style={styles.homeHeaderIcon}>
+              <MaterialCommunityIcons name="bus" size={22} color={ACCENT} />
+            </View>
+          </View>
 
-      {/* Menu */}
-      <MenuButton top={insets.top} onPress={() => console.log("Open menu")} />
+          {/* Map preview card */}
+          <View style={styles.mapCard}>
+            <LinearGradient
+              colors={["#1e1e1e", "#181818"]}
+              style={StyleSheet.absoluteFill}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <MaterialCommunityIcons name="map-outline" size={48} color="rgba(255,255,255,0.08)" style={styles.mapCardIcon} />
+            <View style={styles.mapCardBadge}>
+              <MaterialCommunityIcons name="map-marker" size={14} color={ACCENT} />
+              <Text style={styles.mapCardBadgeText}>Open map in Journey tab</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── Bottom section (recent list) ── */}
+        <View style={styles.homeBottomSection}>
+          {/* Recent trips label */}
+          <View style={styles.recentHeader}>
+            <MaterialCommunityIcons name="clock-outline" size={14} color={TEXT_SECONDARY} />
+            <Text style={styles.recentLabel}>Recent</Text>
+          </View>
+
+          {/* Recent trip rows */}
+          {[
+            { icon: "home-outline" as const, label: "Home", sub: "Saved stop" },
+            { icon: "briefcase-outline" as const, label: "Work", sub: "Saved stop" },
+          ].map((item) => (
+            <View key={item.label} style={styles.recentRow}>
+              <View style={styles.recentIconWrap}>
+                <MaterialCommunityIcons name={item.icon} size={18} color={TEXT_SECONDARY} />
+              </View>
+              <View style={styles.recentText}>
+                <Text style={styles.recentRowLabel}>{item.label}</Text>
+                <Text style={styles.recentRowSub}>{item.sub}</Text>
+              </View>
+              <MaterialCommunityIcons name="chevron-right" size={18} color="rgba(255,255,255,0.2)" />
+            </View>
+          ))}
+        </View>
+      </View>
 
       {/* ── Bottom Sheet ── */}
       <GestureDetector gesture={pan}>
@@ -741,10 +769,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
 
-  mapOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.03)",
-  },
 
   sheetOuter: {
     position: "absolute",
@@ -886,4 +910,116 @@ const styles = StyleSheet.create({
   findButtonActive: { backgroundColor: ACCENT, borderColor: ACCENT },
   findButtonText: { color: "#888888", fontSize: 16, fontWeight: "600" },
   findButtonTextActive: { color: BG },
+
+  /* ── Home background ── */
+  homeBg: {
+    flex: 1,
+  },
+  homeTopSection: {
+    backgroundColor: "#111111",
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  homeBottomSection: {
+    flex: 1,
+    backgroundColor: "#000000",
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+  homeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  homeGreeting: {
+    color: TEXT_PRIMARY,
+    fontSize: 22,
+    fontWeight: "700",
+  },
+  homeGreetingSub: {
+    color: TEXT_SECONDARY,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  homeHeaderIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapCard: {
+    height: 140,
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: BORDER,
+    marginBottom: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mapCardIcon: {
+    position: "absolute",
+  },
+  mapCardBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  mapCardBadgeText: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+  },
+  recentHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 10,
+  },
+  recentLabel: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  recentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER,
+    gap: 12,
+  },
+  recentIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: SURFACE,
+    borderWidth: 1,
+    borderColor: BORDER,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recentText: { flex: 1 },
+  recentRowLabel: {
+    color: TEXT_PRIMARY,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  recentRowSub: {
+    color: TEXT_SECONDARY,
+    fontSize: 12,
+    marginTop: 2,
+  },
 });

@@ -51,7 +51,7 @@ const BORDER = "rgba(255,255,255,0.12)";
 /* ── snap points ── */
 const SNAP_LOW = 160;
 const SNAP_MID = SCREEN_H * 0.35;
-const SNAP_HIGH = SCREEN_H * 0.65;
+const SNAP_HIGH = SCREEN_H * 0.5;
 
 const TY_HIGH = SCREEN_H - SNAP_HIGH;
 const TY_MID = SCREEN_H - SNAP_MID;
@@ -183,6 +183,7 @@ export default function SettingsScreen() {
 
   /* ── Profile edit state ── */
   const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [editingEmail, setEditingEmail] = useState(false);
   const [profileName, setProfileName] = useState(displayName);
@@ -314,6 +315,7 @@ export default function SettingsScreen() {
       setShowProfileEdit(willOpen);
       setShowSubscription(false); // Close other panels
       setShowMapTheme(false);
+      setShowNotifications(false);
 
       // Update expanded state and snap accordingly
       isSectionExpanded.value = willOpen;
@@ -329,6 +331,7 @@ export default function SettingsScreen() {
       setShowSubscription(willOpen);
       setShowProfileEdit(false); // Close other panels
       setShowMapTheme(false);
+      setShowNotifications(false);
 
       // Update expanded state and snap accordingly
       isSectionExpanded.value = willOpen;
@@ -347,6 +350,7 @@ export default function SettingsScreen() {
       setShowMapTheme(willOpen);
       setShowProfileEdit(false); // Close other panels
       setShowSubscription(false);
+      setShowNotifications(false);
 
       // Update expanded state and snap accordingly
       isSectionExpanded.value = willOpen;
@@ -355,9 +359,21 @@ export default function SettingsScreen() {
       } else {
         snapTo(TY_MID); // Snap back to MID when closing
       }
+    } else if (tileId === "notification") {
+      const willOpen = !showNotifications;
+      setShowNotifications(willOpen);
+      setShowProfileEdit(false);
+      setShowSubscription(false);
+      setShowMapTheme(false);
+
+      isSectionExpanded.value = willOpen;
+      if (willOpen) {
+        snapTo(TY_HIGH);
+      } else {
+        snapTo(TY_MID);
+      }
     } else {
       console.log("Pressed:", tileId);
-      // TODO: Navigate to respective screens
     }
   };
 
@@ -525,6 +541,18 @@ export default function SettingsScreen() {
                   }}
                   onConfirmPayment={handleConfirmPayment}
                 />
+              )}
+
+              {/* Notifications Section */}
+              {showNotifications && (
+                <View style={styles.notificationsCard}>
+                  <MaterialCommunityIcons
+                    name="bell-off-outline"
+                    size={20}
+                    color={TEXT_SECONDARY}
+                  />
+                  <Text style={styles.notificationsText}>No notifications</Text>
+                </View>
               )}
 
               {/* Map Theme Section */}
@@ -707,5 +735,22 @@ const styles = StyleSheet.create({
   expandedWrap: {
     flex: 1,
     marginTop: 16,
+  },
+  notificationsCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: SURFACE,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingVertical: 18,
+    marginTop: 16,
+    marginHorizontal: 20,
+    gap: 8,
+  },
+  notificationsText: {
+    color: TEXT_SECONDARY,
+    fontSize: 14,
   },
 });

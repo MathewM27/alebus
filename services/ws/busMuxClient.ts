@@ -181,7 +181,6 @@ export class BusMuxClient {
     this.ws = ws;
 
     ws.onopen = () => {
-      console.log('[busMux] socket open, sending', this.activeSubs.size, 'pending subs');
       this.reconnectDelay = 1_000;
       // Re-subscribe all active subscriptions after reconnect
       for (const frame of this.activeSubs.values()) {
@@ -193,7 +192,6 @@ export class BusMuxClient {
     ws.onmessage = (evt) => {
       try {
         const frame = JSON.parse(evt.data as string) as ServerFrame;
-        console.log('[busMux] frame received:', frame.type);
         this._handleFrame(frame);
       } catch {
         // ignore malformed frames

@@ -129,7 +129,6 @@ export function useBusPosition(
 
     const off = busMuxClient.onBusUpdate((frame) => {
       // The mux may carry updates for other buses; filter to the one we care about.
-      console.log("[useBusPosition] bus.update received — frame busId:", frame.bus.BusID, "watching:", busId);
       if (frame.bus.BusID !== busId) return;
 
       // Discard out-of-order frames (can arrive during reconnect replays).
@@ -146,7 +145,6 @@ export function useBusPosition(
       const frameTs = bus.Position.DeviceTimestampMs;
       if (frameTs > 0 && frameTs <= lastTimestampRef.current) return;
       if (frameTs > 0) lastTimestampRef.current = frameTs;
-      console.log("[useBusPosition] matched — stopIndex:", bus.StopIndex, "fractional:", bus.FractionalIndex, "routeStops:", routeStopsRef.current?.length ?? "null");
       latestBusRef.current = bus;
       setLatestBus(bus);
 
@@ -161,7 +159,6 @@ export function useBusPosition(
         lat: bus.Position.Lat,
         lon: bus.Position.Lon,
       };
-      console.log("[useBusPosition] snapped:", snapped ? `${snapped.lat.toFixed(5)},${snapped.lon.toFixed(5)}` : "null (raw GPS fallback)");
 
       // Start a new LERP from wherever the marker is right now → snapped road position.
       const s = lerpRef.current;

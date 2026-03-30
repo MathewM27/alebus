@@ -25,7 +25,7 @@ const MAX_ZOOM = 18;
 const ACCENT = "#c1ec72";
 
 // How long (ms) after the user stops panning before we re-lock to follow mode
-const FREE_RELOCK_MS = 5_000;
+const FREE_RELOCK_MS = 10_000;
 
 type CameraMode = "follow" | "overview" | "free";
 
@@ -95,6 +95,7 @@ export default function Map({
 
     if (mode === "follow") {
       if (hasCT) {
+        console.log("[camera] initializeCamera → follow flyTo bus", ct!.lat, ct!.lon);
         cam.setCamera({
           centerCoordinate: [ct!.lon, ct!.lat],
           zoomLevel: 16,
@@ -160,6 +161,7 @@ export default function Map({
     if (!cam || !mapReadyRef.current || !cameraTarget) return;
     cam.setCamera({
       centerCoordinate: [cameraTarget.lon, cameraTarget.lat],
+      zoomLevel: 16,
       animationDuration: 2000,
       animationMode: "linearTo",
     });
@@ -170,6 +172,7 @@ export default function Map({
   // next GPS-rate camera update (up to 2–3 s away) won't interrupt the gesture.
   const handleRegionWillChange = useCallback((event: any) => {
     if (!event?.properties?.isUserInteraction) return;
+    console.log("[camera] user gesture start — entering free mode");
     cameraModeRef.current = "free";
     setCameraMode("free");
     if (relockTimer.current) clearTimeout(relockTimer.current);
@@ -181,9 +184,13 @@ export default function Map({
     setMapHeading(heading);
     if (!event?.properties?.isUserInteraction) return;
     if (relockTimer.current) clearTimeout(relockTimer.current);
+    console.log("[camera] user gesture end — relock timer started (10s)");
     relockTimer.current = setTimeout(() => {
+      // Quietly resume following — only update the ref, not state.
+      // This avoids triggering initializeCamera (no forced flyTo / zoom reset).
+      // The GPS-rate follow effect will pick up on the next bus position update.
+      console.log("[camera] relock timer fired — quietly resuming follow");
       cameraModeRef.current = "follow";
-      setCameraMode("follow");
     }, FREE_RELOCK_MS);
   }, []);
 
@@ -204,14 +211,13 @@ export default function Map({
   const compassActive = cameraMode !== "follow";
 
   // ── Route line GeoJSON ───────────────────────────────────────────────────
-  const lineCoords = useMemo<[number, number][]>(() => {
-    const coords =
+  const lineCoords = useMemo<[number, number][]>(
+    () =>
       routeSegment && routeSegment.length >= 2
         ? routeSegment.map((p): [number, number] => [p.lon, p.lat])
-        : [];
-    console.log("[Map] lineCoords updated — points:", coords.length, "first:", coords[0], "last:", coords[coords.length - 1]);
-    return coords;
-  }, [routeSegment]);
+        : [],
+    [routeSegment],
+  );
 
   const lineGeoJSON: GeoJSON.FeatureCollection = useMemo(
     () => ({

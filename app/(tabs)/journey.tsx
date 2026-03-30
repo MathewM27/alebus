@@ -391,12 +391,6 @@ export default function JourneyScreen() {
       const j = frame.journey;
       const proximityName =
         j.proximityName || proximityLevelToName(j.proximityLevel ?? 0);
-      console.log(
-        "[journey] WS journey.update — proximityLevel:",
-        j.proximityLevel,
-        "→",
-        proximityName,
-      );
       setRecommendations((prev) => {
         if (prev.length === 0) return prev;
         const next = [...prev];
@@ -444,13 +438,6 @@ export default function JourneyScreen() {
   /* ── Sync latestBus → busDetails for route segment computation ── */
   useEffect(() => {
     if (!latestBus) return;
-    console.log(
-      "[journey] WS bus.update — stopIndex:",
-      latestBus.StopIndex,
-      "pos:",
-      latestBus.Position.Lat,
-      latestBus.Position.Lon,
-    );
     // Bug #5 fix: merge WS fields onto existing busDetails instead of replacing.
     // A full replace wipes HTTP-loaded fields (e.g. routeId from the initial fetch)
     // that aren't present in the WS DTO, causing routeStops to fail to load.
@@ -532,49 +519,36 @@ export default function JourneyScreen() {
 
     const busHasPassed = busStop.seq > userStop.seq;
     const busIsAtUserStop = busStop.seq === userStop.seq;
-    console.log("[polyline] busStop.seq:", busStop.seq, "userStop.seq:", userStop.seq, "busHasPassed:", busHasPassed, "busIsAtUserStop:", busIsAtUserStop);
     if (busHasPassed || busIsAtUserStop) {
       setRouteSegment(undefined);
       return;
     }
 
-    // Use fractional from the ref (latest frame) — not reactive, so this
-    // effect does not re-run on every fractional change.
     const frac = Math.max(0, Math.min(1, latestBusRef.current?.FractionalIndex ?? 0));
 
     const busPathToNext = busStop.pathToNext ?? [];
-    console.log("[polyline] busPathToNext length:", busPathToNext.length);
     if (busPathToNext.length === 0) {
-      console.log("[polyline] ABORT — no pathToNext on bus stop, clearing segment");
       setRouteSegment(undefined);
       return;
     }
 
     const snappedStart = roadPosition(routeStops, busStop.seq, frac);
-    console.log("[polyline] snappedStart:", snappedStart);
     if (!snappedStart) {
-      console.log("[polyline] ABORT — roadPosition returned null, clearing segment");
       setRouteSegment(undefined);
       return;
     }
 
     const coords: { lat: number; lon: number }[] = [snappedStart];
-
     const remaining = pathAfterFraction(busPathToNext, frac);
-    console.log("[polyline] remaining after fraction:", remaining.length, "points");
     coords.push(...remaining.slice(1));
 
     for (let seq = busStop.seq + 1; seq < userStop.seq; seq++) {
       const seg = routeStops.find((s) => s.seq === seq);
       if (seg?.pathToNext?.length) {
-        console.log("[polyline] intermediate seg seq:", seq, "pathToNext:", seg.pathToNext.length, "points");
         coords.push(...seg.pathToNext);
-      } else {
-        console.log("[polyline] intermediate seg seq:", seq, "MISSING pathToNext — skipping");
       }
     }
     coords.push({ lat: userStop.lat, lon: userStop.lon });
-    console.log("[polyline] FINAL coords length:", coords.length, "first:", coords[0], "last:", coords[coords.length - 1]);
     setRouteSegment(coords.length >= 2 ? coords : undefined);
   }, [
     routeStops,
@@ -805,12 +779,6 @@ export default function JourneyScreen() {
 
   /* ── Navigation banner data ── */
   const navBanner = useMemo(() => {
-    console.log(
-      "[banner] latestBus:",
-      latestBus?.BusID ?? "null",
-      "routeStops:",
-      routeStops?.length ?? "null",
-    );
     if (!latestBus || !routeStops || routeStops.length === 0) return null;
 
     const sorted = [...routeStops].sort((a, b) => a.seq - b.seq);

@@ -1026,7 +1026,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 5,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.25)",
+    backgroundColor: "rgb(255, 250, 250)",
   },
   headerWrap: {
     paddingHorizontal: 20,

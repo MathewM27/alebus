@@ -540,30 +540,32 @@ export default function JourneyScreen() {
     // effect does not re-run on every fractional change.
     const frac = Math.max(0, Math.min(1, latestBusRef.current?.FractionalIndex ?? 0));
 
-    const snappedStart = roadPosition(routeStops, busStop.seq, frac);
-    const coords: { lat: number; lon: number }[] = snappedStart
-      ? [snappedStart]
-      : [
-          {
-            lat: busDetails?.position?.lat ?? busStop.lat,
-            lon: busDetails?.position?.lon ?? busStop.lon,
-          },
-        ];
-
+    // Require pathToNext on the bus's current stop before drawing anything.
+    // Without it we would have to fall back to raw GPS coordinates which
+    // produces a straight haversine line mixed with road geometry.
     const busPathToNext = busStop.pathToNext ?? [];
-    if (busPathToNext.length > 0) {
-      const remaining = pathAfterFraction(busPathToNext, frac);
-      coords.push(...remaining.slice(1));
+    if (busPathToNext.length === 0) {
+      setRouteSegment(undefined);
+      return;
     }
+
+    const snappedStart = roadPosition(routeStops, busStop.seq, frac);
+    if (!snappedStart) {
+      setRouteSegment(undefined);
+      return;
+    }
+
+    const coords: { lat: number; lon: number }[] = [snappedStart];
+
+    const remaining = pathAfterFraction(busPathToNext, frac);
+    coords.push(...remaining.slice(1));
 
     for (let seq = busStop.seq + 1; seq < userStop.seq; seq++) {
       const seg = routeStops.find((s) => s.seq === seq);
       if (seg?.pathToNext?.length) {
         coords.push(...seg.pathToNext);
-      } else {
-        const next = routeStops.find((s) => s.seq === seq + 1);
-        if (next) coords.push({ lat: next.lat, lon: next.lon });
       }
+      // No pathToNext for this segment yet — wait rather than draw a straight line
     }
     coords.push({ lat: userStop.lat, lon: userStop.lon });
     setRouteSegment(coords.length >= 2 ? coords : undefined);
@@ -920,6 +922,14 @@ export default function JourneyScreen() {
       />
       <View style={styles.mapOverlay} pointerEvents="none" />
 
+      {/* Route loading indicator — shown while bus is known but road geometry not yet ready */}
+      {(busDetails || latestBus) && !routeSegment && (
+        <View style={styles.routeLoadingBadge} pointerEvents="none">
+          <ActivityIndicator size="small" color={ACCENT} />
+          <Text style={styles.routeLoadingText}>Loading route…</Text>
+        </View>
+      )}
+
       {/* ── Navigation banner ── */}
       {navBanner && (
         <View
@@ -1006,6 +1016,23 @@ const styles = StyleSheet.create({
   mapOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.03)",
+  },
+  routeLoadingBadge: {
+    position: "absolute",
+    top: 80,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  routeLoadingText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "500",
   },
 
   sheetOuter: {

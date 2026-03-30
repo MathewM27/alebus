@@ -451,7 +451,11 @@ export default function JourneyScreen() {
       latestBus.Position.Lat,
       latestBus.Position.Lon,
     );
-    setBusDetails({
+    // Bug #5 fix: merge WS fields onto existing busDetails instead of replacing.
+    // A full replace wipes HTTP-loaded fields (e.g. routeId from the initial fetch)
+    // that aren't present in the WS DTO, causing routeStops to fail to load.
+    setBusDetails((prev) => ({
+      ...(prev ?? {}),
       busId: latestBus.BusID,
       operatorId: latestBus.OperatorID,
       routeId: latestBus.RouteID,
@@ -465,7 +469,7 @@ export default function JourneyScreen() {
         speedKmh: latestBus.Position.SpeedKmh,
       },
       updatedAt: latestBus.UpdatedAt,
-    });
+    } as BusDetailsDTO));
   }, [latestBus]);
 
   /* ── Fetch route stops whenever the active route changes ── */
@@ -482,29 +486,36 @@ export default function JourneyScreen() {
     });
   }, [busDetails?.routeId]);
 
-  /* ── Rebuild road polyline whenever bus advances along the route ──
+  /* ── Rebuild road polyline whenever bus advances to a new stop ──
    *
-   * Runs on every WS bus.update frame (via latestBus?.FractionalIndex) so the
-   * polyline start stays snapped to the marker as it moves within a segment.
-   * Uses already-loaded routeStops state — no HTTP call here.
+   * Bug #1 fix: use latestBus?.StopIndex directly (not busDetails?.stopIndex)
+   * so the polyline rebuilds in the same render cycle as the WS frame, not one
+   * cycle later after the busDetails sync effect has also run.
+   *
+   * Bug #4 fix: FractionalIndex is no longer in the dep array. The heavy
+   * rebuild (finding stops, building the full segment path) runs only when the
+   * bus changes stop index. Within-segment fractional changes only affect the
+   * marker position (handled by the LERP in useBusPosition) and the polyline
+   * start point (handled by the light effect below). This prevents the full
+   * route geometry rebuild from firing at the WS frame rate (~1 fps).
    */
   useEffect(() => {
+    const stopIndex = latestBus?.StopIndex ?? busDetails?.stopIndex;
     if (
       !routeStops ||
       routeStops.length < 2 ||
-      !busDetails ||
-      busDetails.stopIndex == null
+      stopIndex == null
     )
       return;
     const originStopId = recommendations[0]?.originStopId;
 
-    const busStop = routeStops.find((s) => s.seq === busDetails.stopIndex);
+    const busStop = routeStops.find((s) => s.seq === stopIndex);
     setBusStopName(busStop?.name ?? null);
     console.log(
       "[journey] bus stop name:",
       busStop?.name,
       "seq:",
-      busDetails.stopIndex,
+      stopIndex,
     );
 
     if (!originStopId) return;
@@ -525,16 +536,17 @@ export default function JourneyScreen() {
       return;
     }
 
-    // Use latest fractional from the WS frame so the polyline start tracks the marker.
-    const frac = Math.max(0, Math.min(1, latestBus?.FractionalIndex ?? 0));
+    // Use fractional from the ref (latest frame) — not reactive, so this
+    // effect does not re-run on every fractional change.
+    const frac = Math.max(0, Math.min(1, latestBusRef.current?.FractionalIndex ?? 0));
 
     const snappedStart = roadPosition(routeStops, busStop.seq, frac);
     const coords: { lat: number; lon: number }[] = snappedStart
       ? [snappedStart]
       : [
           {
-            lat: busDetails.position?.lat ?? busStop.lat,
-            lon: busDetails.position?.lon ?? busStop.lon,
+            lat: busDetails?.position?.lat ?? busStop.lat,
+            lon: busDetails?.position?.lon ?? busStop.lon,
           },
         ];
 
@@ -557,9 +569,8 @@ export default function JourneyScreen() {
     setRouteSegment(coords.length >= 2 ? coords : undefined);
   }, [
     routeStops,
-    busDetails?.stopIndex,
+    latestBus?.StopIndex,
     recommendations[0]?.originStopId,
-    latestBus?.FractionalIndex,
   ]);
 
   const snapTo = useCallback(

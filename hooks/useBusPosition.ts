@@ -46,6 +46,9 @@ export function useBusPosition(
 
   // Monotonic sequence guard — discard frames that arrive out of order.
   const lastSeqRef = useRef<number>(-1);
+  // Secondary timestamp guard — discard frames with an older device timestamp
+  // (can occur when the server replays buffered frames after a reconnect).
+  const lastTimestampRef = useRef<number>(-1);
 
   // All interpolation state lives in a ref so the ticker closure is always
   // reading the latest values without needing to be re-created.
@@ -56,11 +59,31 @@ export function useBusPosition(
     startTime: number;
   }>({ from: null, to: null, current: null, startTime: 0 });
 
+  // Keep the latest processed bus frame in a ref so the routeStops effect
+  // can snap the LERP when geometry first loads, without re-subscribing.
+  const latestBusRef = useRef<WsBusDTO | null>(null);
+
   // Keep latest routeStops in a ref so the WS callback always sees the
   // current value without needing to re-subscribe when stops load.
   const routeStopsRef = useRef<RouteStop[] | null | undefined>(routeStops);
   useEffect(() => {
     routeStopsRef.current = routeStops;
+
+    // Bug #3 fix: when routeStops loads mid-session (was null, now has data),
+    // snap the LERP immediately to the road-snapped position so the marker
+    // doesn't jump from the raw GPS fallback to the snapped road position.
+    const bus = latestBusRef.current;
+    if (!routeStops || routeStops.length < 2 || !bus) return;
+    const snapped = roadPosition(routeStops, bus.StopIndex, bus.FractionalIndex);
+    if (!snapped) return;
+    // Snap without animation: set from === to === snapped so no LERP runs.
+    lerpRef.current = {
+      from: snapped,
+      to: snapped,
+      current: snapped,
+      startTime: Date.now(),
+    };
+    setDisplayPos(snapped);
   }, [routeStops]);
 
   // ── Interpolation ticker ──────────────────────────────────────────────────
@@ -101,6 +124,7 @@ export function useBusPosition(
     // the new connection are not silently discarded.
     const offConnect = busMuxClient.onConnect(() => {
       lastSeqRef.current = -1;
+      lastTimestampRef.current = -1; // Bug #2: also reset timestamp guard on reconnect
     });
 
     const off = busMuxClient.onBusUpdate((frame) => {
@@ -113,7 +137,17 @@ export function useBusPosition(
       lastSeqRef.current = frame.seq;
 
       const bus = frame.bus;
+
+      // Bug #2: secondary timestamp guard — discard frames whose device timestamp
+      // is at or before the last accepted frame. Guards against stale buffered
+      // frames replayed after a reconnect that the seq guard alone can't catch
+      // (seq resets to 0 on every new connection, so old frames from a previous
+      // connection with seq=1 would slip past a freshly reset seq guard).
+      const frameTs = bus.Position.DeviceTimestampMs;
+      if (frameTs > 0 && frameTs <= lastTimestampRef.current) return;
+      if (frameTs > 0) lastTimestampRef.current = frameTs;
       console.log("[useBusPosition] matched — stopIndex:", bus.StopIndex, "fractional:", bus.FractionalIndex, "routeStops:", routeStopsRef.current?.length ?? "null");
+      latestBusRef.current = bus;
       setLatestBus(bus);
 
       // Compute road-snapped target when route geometry is available.

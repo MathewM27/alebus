@@ -1,14 +1,14 @@
+import { useAuth } from '@/contexts/AuthContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Tabs, router } from 'expo-router';
 import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth } from '@/contexts/AuthContext';
 
 const ACTIVE_BG = '#ffffff';
 const PILL_BG = '#000000';
-const ACTIVE_ICON = '#000000';
+const ACTIVE_ICON = '#ffffff';
 const INACTIVE_ICON = 'rgba(255,255,255,0.45)';
 
 const TAB_ROUTES: Array<{
@@ -122,7 +122,6 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   tabItemActive: {
-    backgroundColor: ACTIVE_BG,
   },
   label: {
     color: INACTIVE_ICON,
@@ -130,7 +129,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   labelActive: {
-    color: ACTIVE_ICON,
+    color: '#ffffff',
     fontWeight: '600',
   },
 });

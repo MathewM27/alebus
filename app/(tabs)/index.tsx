@@ -29,8 +29,8 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
-import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { scheduleOnRN } from "react-native-worklets";
 
 import Map from "@/components/Map";
 import { loadAllStops, type NearbyStop } from "@/services/api/stops";
@@ -424,7 +424,7 @@ export default function HomeScreen() {
       {/* Background home content */}
       <View style={styles.homeBg}>
         {/* ── Top section (greeting + map card) ── */}
-        <View style={[styles.homeTopSection, { paddingTop: insets.top + 16 }]}>
+        <View style={[styles.homeTopSection, { marginTop: insets.top + 12, paddingTop: 16 }]}>
           {/* App name */}
           <Text style={styles.appName}>Alebus</Text>
 
@@ -808,7 +808,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 5,
     borderRadius: 3,
-    backgroundColor: "rgba(255,255,255,0.25)",
+    backgroundColor: "#ffffff",
   },
   headerWrap: {
     paddingHorizontal: 20,
@@ -926,8 +926,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgb(255, 255, 255)",
     paddingHorizontal: 10,
     paddingBottom: 10,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
+    borderRadius: 14,
   },
   homeBottomSection: {
     flex: 1,

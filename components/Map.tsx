@@ -204,13 +204,14 @@ export default function Map({
   const compassActive = cameraMode !== "follow";
 
   // ── Route line GeoJSON ───────────────────────────────────────────────────
-  const lineCoords = useMemo<[number, number][]>(
-    () =>
+  const lineCoords = useMemo<[number, number][]>(() => {
+    const coords =
       routeSegment && routeSegment.length >= 2
-        ? routeSegment.map((p) => [p.lon, p.lat])
-        : [],
-    [routeSegment],
-  );
+        ? routeSegment.map((p): [number, number] => [p.lon, p.lat])
+        : [];
+    console.log("[Map] lineCoords updated — points:", coords.length, "first:", coords[0], "last:", coords[coords.length - 1]);
+    return coords;
+  }, [routeSegment]);
 
   const lineGeoJSON: GeoJSON.FeatureCollection = useMemo(
     () => ({

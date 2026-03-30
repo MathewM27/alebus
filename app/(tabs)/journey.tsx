@@ -531,7 +531,9 @@ export default function JourneyScreen() {
     if (!busStop || !userStop) return;
 
     const busHasPassed = busStop.seq > userStop.seq;
-    if (busHasPassed) {
+    const busIsAtUserStop = busStop.seq === userStop.seq;
+    console.log("[polyline] busStop.seq:", busStop.seq, "userStop.seq:", userStop.seq, "busHasPassed:", busHasPassed, "busIsAtUserStop:", busIsAtUserStop);
+    if (busHasPassed || busIsAtUserStop) {
       setRouteSegment(undefined);
       return;
     }
@@ -540,17 +542,18 @@ export default function JourneyScreen() {
     // effect does not re-run on every fractional change.
     const frac = Math.max(0, Math.min(1, latestBusRef.current?.FractionalIndex ?? 0));
 
-    // Require pathToNext on the bus's current stop before drawing anything.
-    // Without it we would have to fall back to raw GPS coordinates which
-    // produces a straight haversine line mixed with road geometry.
     const busPathToNext = busStop.pathToNext ?? [];
+    console.log("[polyline] busPathToNext length:", busPathToNext.length);
     if (busPathToNext.length === 0) {
+      console.log("[polyline] ABORT — no pathToNext on bus stop, clearing segment");
       setRouteSegment(undefined);
       return;
     }
 
     const snappedStart = roadPosition(routeStops, busStop.seq, frac);
+    console.log("[polyline] snappedStart:", snappedStart);
     if (!snappedStart) {
+      console.log("[polyline] ABORT — roadPosition returned null, clearing segment");
       setRouteSegment(undefined);
       return;
     }
@@ -558,16 +561,20 @@ export default function JourneyScreen() {
     const coords: { lat: number; lon: number }[] = [snappedStart];
 
     const remaining = pathAfterFraction(busPathToNext, frac);
+    console.log("[polyline] remaining after fraction:", remaining.length, "points");
     coords.push(...remaining.slice(1));
 
     for (let seq = busStop.seq + 1; seq < userStop.seq; seq++) {
       const seg = routeStops.find((s) => s.seq === seq);
       if (seg?.pathToNext?.length) {
+        console.log("[polyline] intermediate seg seq:", seq, "pathToNext:", seg.pathToNext.length, "points");
         coords.push(...seg.pathToNext);
+      } else {
+        console.log("[polyline] intermediate seg seq:", seq, "MISSING pathToNext — skipping");
       }
-      // No pathToNext for this segment yet — wait rather than draw a straight line
     }
     coords.push({ lat: userStop.lat, lon: userStop.lon });
+    console.log("[polyline] FINAL coords length:", coords.length, "first:", coords[0], "last:", coords[coords.length - 1]);
     setRouteSegment(coords.length >= 2 ? coords : undefined);
   }, [
     routeStops,

@@ -6,7 +6,7 @@ import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const ACTIVE_BG = '#ffffff';
+
 const PILL_BG = '#000000';
 const ACTIVE_ICON = '#ffffff';
 const INACTIVE_ICON = 'rgba(255,255,255,0.45)';
@@ -106,11 +106,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
     alignItems: 'center',
-    shadowColor: '#c1ec72',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 24,
-    elevation: 2,
+
   },
   tabItem: {
     flex: 1,

@@ -703,8 +703,6 @@ const styles = StyleSheet.create({
   editCard: {
     backgroundColor: SURFACE,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: ACCENT,
     padding: 18,
     marginBottom: 20,
   },

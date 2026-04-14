@@ -47,12 +47,12 @@ import {
   loadActiveJourneys,
   type CreateJourneyResponse,
 } from "@/services/api/journey";
-import { fetchRouteStops, type RouteStop } from "@/services/api/stops";
 import {
   getMeProfile,
   setShortcuts as saveShortcutsToBackend,
   savedLocationsToShortcuts,
 } from "@/services/api/users";
+import { fetchRouteStops, type RouteStop } from "@/services/api/stops";
 import { busMuxClient } from "@/services/ws/busMuxClient";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import { pathAfterFraction, roadPosition } from "@/utils/routeGeometry";
@@ -494,7 +494,7 @@ export default function JourneyScreen() {
   const handleEditClose = useCallback(() => {
     setIsEditingShortcut(false);
     setSectionExpanded(false);
-    snapTo(1); // return to default height
+    snapTo(2); // return to default height
   }, [snapTo, setSectionExpanded]);
 
   /* ── Handlers ── */

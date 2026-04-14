@@ -242,6 +242,8 @@ export function useBottomSheet(options: BottomSheetOptions): BottomSheetReturn {
   // ── Pan gesture ───────────────────────────────────────────────────────────
 
   const pan = Gesture.Pan()
+    .activeOffsetY([-12, 12])   // only activate after 12px vertical movement
+    .failOffsetX([-10, 10])     // fail immediately if horizontal movement detected first
     .onStart(() => {
       "worklet";
       startY.value = translateY.value;

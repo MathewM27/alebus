@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "alebus",
-    "slug": "alebus",
+    "name": "Alebus",
+    "slug": "Alebus",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "alebus",
+    "scheme": "Alebus",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -66,3 +66,4 @@
     "owner": "futurexdesigns"
   }
 }
+

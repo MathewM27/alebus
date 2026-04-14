@@ -10,15 +10,13 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
-  Keyboard,
   Pressable,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import {
-  Gesture,
   GestureDetector,
   GestureHandlerRootView,
   ScrollView,
@@ -28,7 +26,6 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -40,6 +37,7 @@ import ShortcutsSection, {
   type Shortcut,
 } from "@/components/journey/ShortcutsSection";
 import { useAuth } from "@/contexts/AuthContext";
+import { useBottomSheet } from "@/hooks/useBottomSheet";
 import { useBusPosition } from "@/hooks/useBusPosition";
 import { getBusDetails, type BusDetailsDTO } from "@/services/api/buses";
 import {
@@ -61,7 +59,6 @@ import { pathAfterFraction, roadPosition } from "@/utils/routeGeometry";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 /* ───────────── theme ───────────── */
-const { height: SCREEN_H } = Dimensions.get("window");
 const ACCENT = "#c1ec72";
 const BG = "#000000";
 const SHEET_BG = "#000000";
@@ -70,44 +67,19 @@ const TEXT_PRIMARY = "#FFFFFF";
 const TEXT_SECONDARY = "rgba(255,255,255,0.65)";
 const BORDER = "rgba(255,255,255,0.12)";
 
-/* ── snap points ── */
-const SNAP_LOW = 160;
-const SNAP_MID = SCREEN_H * 0.46;
-const SNAP_HIGH_EDIT = SCREEN_H * 0.9;   // shortcuts edit form
-const SNAP_HIGH_JOURNEY = SCREEN_H * 0.72; // active journey recommendations
-
-
-const TY_HIGH = SCREEN_H - SNAP_HIGH_EDIT;
-const TY_HIGH_JOURNEY = SCREEN_H - SNAP_HIGH_JOURNEY;
-const TY_MID = SCREEN_H - SNAP_MID;
-const TY_LOW = SCREEN_H - SNAP_LOW;
-
-
-const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
-
-/* ── Proximity level (int) → name used by format.ts color/label helpers ── */
+/* ── Proximity level (int) → name ── */
 function proximityLevelToName(level: number): string {
   switch (level) {
-    case 1:
-      return "approaching"; // ≤500m
-    case 2:
-      return "near"; // ≤100m
-    case 3:
-      return "arriving"; // ≤50m
-    default:
-      return "none"; // >500m or unknown
+    case 1: return "approaching"; // ≤500m
+    case 2: return "near";        // ≤100m
+    case 3: return "arriving";    // ≤50m
+    default: return "none";
   }
 }
 
-/* ─────────────────────────────────────────────────
-   Map CreateJourneyResponse → JourneyTrackingDTO[]
-   One card per bus recommendation (index 0 = active card)
-   ───────────────────────────────────────────────── */
+/* ── Map CreateJourneyResponse → JourneyTrackingDTO[] ── */
 function responseToCards(resp: CreateJourneyResponse): JourneyTrackingDTO[] {
-  console.log(
-    "[journey] mapping response → cards, recs:",
-    resp.recommendations.length,
-  );
+  console.log("[journey] mapping response → cards, recs:", resp.recommendations.length);
   return resp.recommendations.map((rec, i) => ({
     journeyId: i === 0 ? resp.journeyId : `${resp.journeyId}-alt-${i}`,
     status: 2,
@@ -127,6 +99,7 @@ function responseToCards(resp: CreateJourneyResponse): JourneyTrackingDTO[] {
 export default function JourneyScreen() {
   const insets = useSafeAreaInsets();
   const { userId: authUserId } = useAuth();
+  const { height: screenHeight } = useWindowDimensions();
 
   /* ── navigation params from "Find Bus" ── */
   const params = useLocalSearchParams<{
@@ -134,13 +107,11 @@ export default function JourneyScreen() {
     originLon?: string;
     destStopId?: string;
     destStopName?: string;
-    ts?: string; // nonce: ensures same-params repeat navigations re-trigger the effect
+    ts?: string;
   }>();
 
   /* ── API state ── */
-  const [recommendations, setRecommendations] = useState<JourneyTrackingDTO[]>(
-    [],
-  );
+  const [recommendations, setRecommendations] = useState<JourneyTrackingDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [journeyId, setJourneyId] = useState<string | null>(null);
@@ -158,7 +129,66 @@ export default function JourneyScreen() {
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS);
   const [isEditingShortcut, setIsEditingShortcut] = useState(false);
 
-  // Load shortcuts from backend on mount (once user is authenticated)
+  const hasRecommendations = recommendations.length > 0;
+
+  /* ── Bottom sheet ──
+   * Snap points:
+   *   0 → 15% visible  (collapsed)
+   *   1 → 50% visible  (default idle)
+   *   2 → 75% visible  (active journey)
+   *   3 → 92% visible  (shortcut edit form)
+   *
+   * maxSnapIndex is controlled by state so the drag ceiling adjusts dynamically.
+   * Programmatic snapTo() bypasses the ceiling (edit form, recommendations).
+   */
+  const maxSnapIndex = isEditingShortcut ? 3 : hasRecommendations ? 2 : 1;
+
+  const {
+    translateY,
+    sheetStyle,
+    pan,
+    snapTo,
+    TY,
+    glowStyle,
+    setSectionExpanded,
+  } = useBottomSheet({
+    screenHeight,
+    snapPoints: [0.15, 0.50, 0.75, 0.92],
+    initialSnap: 1,
+    maxSnapIndex,
+    onKeyboardShow: true,  // lift to index 3 when keyboard appears (shortcut edit inputs)
+    keyboardSnapIndex: 3,
+  });
+
+  /* ── Title opacity — fades out when recommendations arrive ── */
+  const titleOpacity = useSharedValue(1);
+
+  const titleStyle = useAnimatedStyle(() => ({
+    opacity: titleOpacity.value,
+  }));
+
+  /* ── expandedOpacity: fade content when sheet collapses ── */
+  const expandedOpacity = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      translateY.value,
+      [TY[1], TY[0]],   // default → collapsed
+      [1, 0],
+      Extrapolation.CLAMP,
+    ),
+  }));
+
+  /* ── When recommendations arrive, snap to active journey height ── */
+  useEffect(() => {
+    if (hasRecommendations) {
+      snapTo(2); // 75% visible
+      titleOpacity.value = withTiming(0, { duration: 300 });
+    } else {
+      snapTo(1); // 50% visible
+      titleOpacity.value = withTiming(1, { duration: 300 });
+    }
+  }, [hasRecommendations]);
+
+  /* ── Load shortcuts from backend on mount ── */
   useEffect(() => {
     if (!authUserId) return;
     getMeProfile()
@@ -178,59 +208,27 @@ export default function JourneyScreen() {
     });
   }, []);
 
-  /* ── shared values ── */
-  const translateY = useSharedValue(TY_LOW);
-  const ctx = useSharedValue(0);
-  const maxSnapY = useSharedValue(TY_MID);
-  const overscrollGlow = useSharedValue(0);
-  const titleOpacity = useSharedValue(1);
-  const isSectionExpanded = useSharedValue(false);
-
-  const hasRecommendations = recommendations.length > 0;
-
-  // Update max snap when recommendations change
-  const TY_ACTIVE = SCREEN_H * 0.5; // 50% height when journey active
-  useEffect(() => {
-    maxSnapY.value = hasRecommendations ? TY_HIGH_JOURNEY : TY_MID;
-    if (hasRecommendations) {
-      translateY.value = withSpring(TY_ACTIVE, SPRING_CFG);
-      titleOpacity.value = withTiming(0, { duration: 300 });
-    } else {
-      translateY.value = withSpring(TY_MID, SPRING_CFG);
-      titleOpacity.value = withTiming(1, { duration: 300 });
-    }
-  }, [hasRecommendations]);
-
   /* ── Track last param set to avoid duplicate calls ── */
   const lastCallKey = useRef<string | null>(null);
 
   /* ── On mount: load any existing active journeys if no nav params provided ── */
   useEffect(() => {
     if (!authUserId) return;
-    if (params.originLat || params.originLon || params.destStopId) return; // params will trigger createJourney instead
+    if (params.originLat || params.originLon || params.destStopId) return;
 
     const load = async () => {
-      console.log(
-        "[journey] no nav params — checking for existing active journeys",
-      );
+      console.log("[journey] no nav params — checking for existing active journeys");
       try {
         const existing = await loadActiveJourneys(authUserId);
         if (existing.length > 0) {
-          console.log(
-            "[journey] restored",
-            existing.length,
-            "active journey(s)",
-          );
+          console.log("[journey] restored", existing.length, "active journey(s)");
           setJourneyId(existing[0].journeyId);
           setRecommendations(existing);
         } else {
           console.log("[journey] no active journeys found");
         }
       } catch (e: any) {
-        console.warn(
-          "[journey] failed to load active journeys on mount:",
-          e?.message ?? e,
-        );
+        console.warn("[journey] failed to load active journeys on mount:", e?.message ?? e);
       }
     };
 
@@ -253,12 +251,7 @@ export default function JourneyScreen() {
     }
     lastCallKey.current = callKey;
 
-    console.log("[journey] params received →", {
-      originLat,
-      originLon,
-      destStopId,
-      destStopName,
-    });
+    console.log("[journey] params received →", { originLat, originLon, destStopId, destStopName });
 
     const run = async () => {
       setLoading(true);
@@ -298,9 +291,7 @@ export default function JourneyScreen() {
 
         if (resp.recommendations.length === 0) {
           console.warn("[journey] 0 recommendations returned");
-          setError(
-            "No buses found for this route right now. Try again shortly.",
-          );
+          setError("No buses found for this route right now. Try again shortly.");
           setLoading(false);
           return;
         }
@@ -312,41 +303,22 @@ export default function JourneyScreen() {
       } catch (err: any) {
         const msg = err?.message ?? String(err);
         const status = err?.status;
-        console.warn(
-          "[journey] createJourney error — status:",
-          status,
-          "msg:",
-          msg,
-        );
+        console.warn("[journey] createJourney error — status:", status, "msg:", msg);
 
         if (status === 409) {
-          // User already has active journeys — load and display them
-          console.log(
-            "[journey] 409 conflict — loading existing active journeys",
-          );
+          console.log("[journey] 409 conflict — loading existing active journeys");
           try {
             const existing = await loadActiveJourneys(authUserId);
             if (existing.length > 0) {
-              console.log(
-                "[journey] found",
-                existing.length,
-                "existing active journey(s)",
-              );
+              console.log("[journey] found", existing.length, "existing active journey(s)");
               setJourneyId(existing[0].journeyId);
               setRecommendations(existing);
             } else {
-              setError(
-                "You have a journey in progress but it could not be loaded. Please try again.",
-              );
+              setError("You have a journey in progress but it could not be loaded. Please try again.");
             }
           } catch (loadErr: any) {
-            console.warn(
-              "[journey] failed to load existing journeys:",
-              loadErr?.message ?? loadErr,
-            );
-            setError(
-              "You already have an active journey. Please wait or try again shortly.",
-            );
+            console.warn("[journey] failed to load existing journeys:", loadErr?.message ?? loadErr);
+            setError("You already have an active journey. Please wait or try again shortly.");
           }
         } else {
           setError(msg || "Failed to find a journey. Please try again.");
@@ -366,10 +338,7 @@ export default function JourneyScreen() {
     busMuxClient
       .connect()
       .then(() => {
-        console.log(
-          "[journey] WS connected OK, subscribing to journeyId:",
-          journeyId,
-        );
+        console.log("[journey] WS connected OK, subscribing to journeyId:", journeyId);
         return busMuxClient.subscribeJourney(journeyId);
       })
       .then((subId) => console.log("[journey] WS subscribed, subId:", subId))
@@ -411,23 +380,20 @@ export default function JourneyScreen() {
     return off;
   }, [journeyId]);
 
-  /* ── Smooth bus position via WS (replaces 10s HTTP poll) ── */
+  /* ── Smooth bus position via WS ── */
   const activeBusId = recommendations[0]?.activeBusId ?? null;
   const { displayPos, latestBus } = useBusPosition(activeBusId, routeStops);
 
-  // Keep latestBus in a ref so the routeSegment effect can read fractionalIndex
-  // without being in its dependency array (avoids rebuilding polyline every WS frame)
   const latestBusRef = useRef(latestBus);
   useEffect(() => {
     latestBusRef.current = latestBus;
   }, [latestBus]);
 
-  /* ── One-time initial HTTP fetch so map/stops render before first WS frame ── */
+  /* ── One-time initial HTTP fetch ── */
   useEffect(() => {
     if (!activeBusId) return;
     getBusDetails(activeBusId)
       .then((details) => {
-        // Only apply if WS hasn't already delivered a frame (latestBus takes precedence)
         setBusDetails((prev) => prev ?? details);
       })
       .catch((e: any) =>
@@ -435,12 +401,9 @@ export default function JourneyScreen() {
       );
   }, [activeBusId]);
 
-  /* ── Sync latestBus → busDetails for route segment computation ── */
+  /* ── Sync latestBus → busDetails ── */
   useEffect(() => {
     if (!latestBus) return;
-    // Bug #5 fix: merge WS fields onto existing busDetails instead of replacing.
-    // A full replace wipes HTTP-loaded fields (e.g. routeId from the initial fetch)
-    // that aren't present in the WS DTO, causing routeStops to fail to load.
     setBusDetails((prev) => ({
       ...(prev ?? {}),
       busId: latestBus.BusID,
@@ -464,56 +427,26 @@ export default function JourneyScreen() {
     if (!busDetails?.routeId) return;
     fetchRouteStops(busDetails.routeId).then((stops) => {
       console.log(
-        "[journey] setRouteStops — count:",
-        stops.length,
-        "routeId:",
-        busDetails.routeId,
+        "[journey] setRouteStops — count:", stops.length, "routeId:", busDetails.routeId,
       );
       setRouteStops(stops);
     });
   }, [busDetails?.routeId]);
 
-  /* ── Rebuild road polyline whenever bus advances to a new stop ──
-   *
-   * Bug #1 fix: use latestBus?.StopIndex directly (not busDetails?.stopIndex)
-   * so the polyline rebuilds in the same render cycle as the WS frame, not one
-   * cycle later after the busDetails sync effect has also run.
-   *
-   * Bug #4 fix: FractionalIndex is no longer in the dep array. The heavy
-   * rebuild (finding stops, building the full segment path) runs only when the
-   * bus changes stop index. Within-segment fractional changes only affect the
-   * marker position (handled by the LERP in useBusPosition) and the polyline
-   * start point (handled by the light effect below). This prevents the full
-   * route geometry rebuild from firing at the WS frame rate (~1 fps).
-   */
+  /* ── Rebuild road polyline whenever bus advances to a new stop ── */
   useEffect(() => {
     const stopIndex = latestBus?.StopIndex ?? busDetails?.stopIndex;
-    if (
-      !routeStops ||
-      routeStops.length < 2 ||
-      stopIndex == null
-    )
-      return;
+    if (!routeStops || routeStops.length < 2 || stopIndex == null) return;
     const originStopId = recommendations[0]?.originStopId;
 
     const busStop = routeStops.find((s) => s.seq === stopIndex);
     setBusStopName(busStop?.name ?? null);
-    console.log(
-      "[journey] bus stop name:",
-      busStop?.name,
-      "seq:",
-      stopIndex,
-    );
+    console.log("[journey] bus stop name:", busStop?.name, "seq:", stopIndex);
 
     if (!originStopId) return;
     const userStop = routeStops.find((s) => s.id === originStopId);
     setUserStopName(userStop?.name ?? null);
-    console.log(
-      "[journey] user stop name:",
-      userStop?.name,
-      "id:",
-      originStopId,
-    );
+    console.log("[journey] user stop name:", userStop?.name, "id:", originStopId);
 
     if (!busStop || !userStop) return;
 
@@ -525,7 +458,6 @@ export default function JourneyScreen() {
     }
 
     const frac = Math.max(0, Math.min(1, latestBusRef.current?.FractionalIndex ?? 0));
-
     const busPathToNext = busStop.pathToNext ?? [];
     if (busPathToNext.length === 0) {
       setRouteSegment(undefined);
@@ -550,138 +482,25 @@ export default function JourneyScreen() {
     }
     coords.push({ lat: userStop.lat, lon: userStop.lon });
     setRouteSegment(coords.length >= 2 ? coords : undefined);
-  }, [
-    routeStops,
-    latestBus?.StopIndex,
-    recommendations[0]?.originStopId,
-  ]);
-
-  const snapTo = useCallback(
-    (target: number) => {
-      "worklet";
-      translateY.value = withSpring(target, SPRING_CFG);
-    },
-    [translateY],
-  );
-
-  /* ── Snap back when keyboard hides ── */
-  const isEditingShortcutRef = useRef(false);
-  useEffect(() => { isEditingShortcutRef.current = isEditingShortcut; }, [isEditingShortcut]);
-
-  useEffect(() => {
-    const hide = Keyboard.addListener("keyboardDidHide", () => {
-      const target = isEditingShortcutRef.current ? TY_HIGH : TY_MID;
-      translateY.value = withSpring(target, SPRING_CFG);
-    });
-    return () => { hide.remove(); };
-  }, []);
+  }, [routeStops, latestBus?.StopIndex, recommendations[0]?.originStopId]);
 
   /* ── Edit shortcut handlers ── */
   const handleEditStart = useCallback(() => {
-    isSectionExpanded.value = true;
     setIsEditingShortcut(true);
-    snapTo(TY_MID);
-  }, [snapTo]);
+    setSectionExpanded(true);
+    snapTo(3); // expand to edit form height
+  }, [snapTo, setSectionExpanded]);
 
   const handleEditClose = useCallback(() => {
-    isSectionExpanded.value = false;
     setIsEditingShortcut(false);
-    snapTo(TY_MID);
-  }, [snapTo]);
-
-  /* ── Pan gesture ── */
-  /* ── Pan gesture ── */
-  const pan = Gesture.Pan()
-    .enabled(!isEditingShortcut)
-    .activeOffsetY([-10, 10])
-    .failOffsetX([-15, 15])
-    .onStart(() => {
-      ctx.value = translateY.value;
-    })
-    .onUpdate((e) => {
-      const rawY = ctx.value + e.translationY;
-      const currentMax = maxSnapY.value;
-      // Restrict minimum based on whether shortcut editor is expanded
-      const minY = isSectionExpanded.value ? TY_HIGH : currentMax;
-      if (rawY < minY) {
-        const overAmount = Math.min((minY - rawY) / 80, 1);
-        overscrollGlow.value = overAmount;
-      } else {
-        overscrollGlow.value = withTiming(0, { duration: 150 });
-      }
-      translateY.value = Math.max(minY, Math.min(rawY, TY_LOW));
-    })
-    .onEnd((e) => {
-      overscrollGlow.value = withTiming(0, { duration: 200 });
-      const cur = translateY.value;
-      const v = e.velocityY;
-      const FLING = 600;
-      const maxSnap = maxSnapY.value;
-
-      // Choose snap points based on whether shortcut editor is expanded
-      const snaps = isSectionExpanded.value
-        ? [TY_HIGH, TY_MID, TY_LOW]
-        : [maxSnap, TY_MID, TY_LOW];
-
-      if (Math.abs(v) > FLING) {
-        if (v > 0) {
-          // Fling down
-          if (isSectionExpanded.value) {
-            snapTo(cur < TY_MID ? TY_MID : TY_LOW);
-          } else {
-            snapTo(cur < TY_MID ? TY_MID : TY_LOW);
-          }
-        } else {
-          // Fling up - only allow HIGH if shortcut editor is expanded
-          if (isSectionExpanded.value) {
-            snapTo(cur > TY_MID ? TY_MID : TY_HIGH);
-          } else {
-            snapTo(cur > TY_MID ? TY_MID : maxSnap);
-          }
-        }
-        return;
-      }
-
-      // Find closest snap point
-      let best = snaps[0];
-      let bestD = Math.abs(cur - snaps[0]);
-      for (const snap of snaps) {
-        const d = Math.abs(cur - snap);
-        if (d < bestD) {
-          bestD = d;
-          best = snap;
-        }
-      }
-      snapTo(best);
-    });
-
-  /* ── Animated styles ── */
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: overscrollGlow.value,
-  }));
-
-  const expandedOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      translateY.value,
-      [TY_MID, TY_LOW],
-      [1, 0],
-      Extrapolation.CLAMP,
-    ),
-  }));
-
-  const titleStyle = useAnimatedStyle(() => ({
-    opacity: titleOpacity.value,
-  }));
+    setSectionExpanded(false);
+    snapTo(1); // return to default height
+  }, [snapTo, setSectionExpanded]);
 
   /* ── Handlers ── */
   const handleEndTracking = useCallback(() => {
     console.log("[journey] end tracking, journeyId:", journeyId);
 
-    // Cancel all real journey IDs on the backend (skip synthetic alt-IDs)
     const realIds = recommendations
       .map((r) => r.journeyId)
       .filter((id) => !id.includes("-alt-"));
@@ -707,8 +526,8 @@ export default function JourneyScreen() {
     setRouteSegment(undefined);
     setError(null);
     lastCallKey.current = null;
-    translateY.value = withSpring(TY_MID, SPRING_CFG);
-  }, [journeyId, recommendations]);
+    snapTo(1);
+  }, [journeyId, recommendations, snapTo]);
 
   const handleStartJourney = useCallback(async (sc: Shortcut) => {
     if (!sc.originLat || !sc.originLon || !sc.destStopId) {
@@ -733,8 +552,6 @@ export default function JourneyScreen() {
   }, [authUserId]);
 
   /* ── Map positions ── */
-  // userPosition: prefer nav params (new journey); fall back to route stop coords
-  // (restored journey where params are absent) so overview/compass always works.
   const originStopId = recommendations[0]?.originStopId;
   const userPosition = useMemo(() => {
     if (!hasRecommendations) return undefined;
@@ -749,22 +566,10 @@ export default function JourneyScreen() {
       if (stop) return { lat: stop.lat, lon: stop.lon };
     }
     return undefined;
-  }, [
-    hasRecommendations,
-    params.originLat,
-    params.originLon,
-    originStopId,
-    routeStops,
-  ]);
+  }, [hasRecommendations, params.originLat, params.originLon, originStopId, routeStops]);
 
-  // Only use the LERP-interpolated WS position for the marker.
-  // No HTTP pre-fetch fallback — marker stays hidden until the first WS frame
-  // arrives so the user never sees the bus jump from a stale HTTP position.
   const busPosition = displayPos ?? undefined;
 
-  // Camera target: snapped road position from the latest WS frame (~every 2–3 s).
-  // Intentionally NOT the LERP position — camera follows at GPS rate so it never
-  // fights user pinch/pan gestures (which fire much faster than GPS updates).
   const cameraTarget = useMemo(() => {
     if (!latestBus) return undefined;
     const frac = Math.max(0, Math.min(1, latestBus.FractionalIndex));
@@ -772,9 +577,7 @@ export default function JourneyScreen() {
       routeStops && routeStops.length >= 2
         ? roadPosition(routeStops, latestBus.StopIndex, frac)
         : null;
-    return (
-      snapped ?? { lat: latestBus.Position.Lat, lon: latestBus.Position.Lon }
-    );
+    return snapped ?? { lat: latestBus.Position.Lat, lon: latestBus.Position.Lon };
   }, [latestBus, routeStops]);
 
   /* ── Navigation banner data ── */
@@ -785,7 +588,6 @@ export default function JourneyScreen() {
     const currentStop = sorted.find((s) => s.seq === latestBus.StopIndex);
     const nextStop = sorted.find((s) => s.seq === latestBus.StopIndex + 1);
 
-    // "At stop" when fractional is very low (just arrived / dwelling)
     const isAtStop = latestBus.FractionalIndex < 0.08;
 
     let statusText: string;
@@ -799,7 +601,6 @@ export default function JourneyScreen() {
       statusText = currentStop ? `From ${currentStop.name}` : "In transit";
     }
 
-    // Compact distance to user's boarding stop (no "away" suffix)
     const distM = recommendations[0]?.recommendations?.[0]?.distanceMeters;
     let distText = "";
     if (distM != null && !Number.isNaN(distM) && distM > 0) {
@@ -827,11 +628,7 @@ export default function JourneyScreen() {
     if (error) {
       return (
         <View style={styles.centeredState}>
-          <MaterialCommunityIcons
-            name="alert-circle-outline"
-            size={32}
-            color="#ff6b6b"
-          />
+          <MaterialCommunityIcons name="alert-circle-outline" size={32} color="#ff6b6b" />
           <Text style={styles.errorText}>{error}</Text>
           <Pressable
             style={styles.retryBtn}
@@ -878,8 +675,8 @@ export default function JourneyScreen() {
           onStartJourney={handleStartJourney}
           onEditStart={handleEditStart}
           onEditEnd={handleEditClose}
-          onFieldFocus={() => { translateY.value = withSpring(TY_HIGH, SPRING_CFG); }}
-          onFieldBlur={() => { translateY.value = withSpring(TY_MID, SPRING_CFG); }}
+          onFieldFocus={() => snapTo(3)}
+          onFieldBlur={() => snapTo(1)}
         />
       </>
     );
@@ -897,7 +694,7 @@ export default function JourneyScreen() {
       />
       <View style={styles.mapOverlay} pointerEvents="none" />
 
-      {/* Route loading indicator — shown while bus is known but road geometry not yet ready */}
+      {/* Route loading indicator */}
       {(busDetails || latestBus) && !routeSegment && (
         <View style={styles.routeLoadingBadge} pointerEvents="none">
           <ActivityIndicator size="small" color={ACCENT} />
@@ -1015,7 +812,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_H,
+    bottom: 0,
     backgroundColor: SHEET_BG,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -1095,7 +892,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // ── Navigation banner ──────────────────────────────────────────────────────
   navBanner: {
     position: "absolute",
     left: 16,
@@ -1139,5 +935,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
-
 });

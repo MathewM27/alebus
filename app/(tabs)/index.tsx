@@ -3,10 +3,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Dimensions,
   Image,
   Keyboard,
   Pressable,
@@ -15,9 +14,9 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import {
-  Gesture,
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
@@ -25,18 +24,14 @@ import Animated, {
   Extrapolation,
   interpolate,
   useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { scheduleOnRN } from "react-native-worklets";
 
 import Map from "@/components/Map";
+import { useBottomSheet } from "@/hooks/useBottomSheet";
 import { loadAllStops, type NearbyStop } from "@/services/api/stops";
 
-/* ───────────── constants ───────────── */
-const { height: SCREEN_H } = Dimensions.get("window");
+/* ───────────── theme constants ───────────── */
 const ACCENT = "#c1ec72";
 const BG = "#000000";
 const SHEET_BG = "#000000";
@@ -46,21 +41,7 @@ const TEXT_SECONDARY = "rgba(255,255,255,0.65)";
 const BORDER = "rgba(255,255,255,0.12)";
 const SUGGESTION_BG = "#1A1A1D";
 
-/* snap points – heights measured from the bottom of the screen */
-const SNAP_LOW = 160;
-const SNAP_MID = SCREEN_H * 0.5;
-const SNAP_HIGH = SCREEN_H * 0.5;
-const SNAP_KB = SCREEN_H * 0.9;
-
-const TY_HIGH = SCREEN_H - SNAP_HIGH;
-const TY_MID = SCREEN_H - SNAP_MID;
-const TY_LOW = SCREEN_H - SNAP_LOW;
-const TY_KB = SCREEN_H - SNAP_KB;
-
-const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
-
 /* ───────────── small sub-components ───────────── */
-
 
 function QuickActionButton({
   icon,
@@ -97,7 +78,6 @@ const quickStyles = StyleSheet.create({
   },
   btnActive: { borderColor: ACCENT },
 });
-
 
 /* ─────────────────────────────────────────────────
    Suggestion row (shared between origin & dest lists)
@@ -159,6 +139,36 @@ const sugStyles = StyleSheet.create({
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
+
+  /* ── Bottom sheet ── */
+  const {
+    translateY,
+    sheetStyle,
+    pan,
+    snapTo,
+    TY,
+    glowStyle,
+  } = useBottomSheet({
+    screenHeight,
+    //          collapsed  default  keyboard-safe
+    snapPoints: [0.15,     0.5,    0.92],
+    initialSnap: 1,          // opens at 55% visible — inputs shown
+    maxSnapIndex: 1,          // user can only drag between collapsed ↔ default
+                              // (92% snap is keyboard-only, not draggable)
+    onKeyboardShow: true,
+    keyboardSnapIndex: 2,     // lift to 92% so inputs clear the Android keyboard
+  });
+
+  /* ── expandedOpacity: fade content out as sheet collapses ── */
+  const expandedOpacity = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      translateY.value,
+      [TY[1], TY[0]],  // default → collapsed
+      [1, 0],
+      Extrapolation.CLAMP,
+    ),
+  }));
 
   /* ── origin field ── */
   const [originText, setOriginText] = useState("");
@@ -184,7 +194,6 @@ export default function HomeScreen() {
 
   const [activeQuick, setActiveQuick] = useState<string | null>(null);
 
-
   const isButtonActive = selectedOrigin !== null && selectedStop !== null;
 
   /* ── Load all stops using Mauritius center (no GPS needed) ── */
@@ -202,12 +211,12 @@ export default function HomeScreen() {
     }
   }, [stopsLoaded, stopsLoading]);
 
-  /* ── Origin: focus just expands + loads stops ── */
+  /* ── Origin: focus expands sheet + loads stops ── */
   const handleOriginFocus = useCallback(() => {
     setOriginFocused(true);
-    expandToHigh();
+    snapTo(1); // ensure sheet is at default (inputs visible)
     loadStops();
-  }, [loadStops]);
+  }, [snapTo, loadStops]);
 
   /* ── Origin: filter stops as user types ── */
   const handleOriginTextChange = (text: string) => {
@@ -301,9 +310,6 @@ export default function HomeScreen() {
     setOriginError("");
     setDestinationError("");
 
-    // Navigate to journey tab; full API wiring in journey.tsx
-    // ts ensures params always change even on repeat Find Bus taps with the same data,
-    // so journey.tsx's useEffect dependency array fires on every new request.
     router.push({
       pathname: "/(tabs)/journey",
       params: {
@@ -315,106 +321,6 @@ export default function HomeScreen() {
       },
     });
   };
-
-  /* ── shared values ── */
-  const translateY = useSharedValue(TY_LOW);
-  const ctx = useSharedValue(0);
-  const overscrollGlow = useSharedValue(0);
-
-  const dismissKB = useCallback(() => Keyboard.dismiss(), []);
-
-  const snapTo = useCallback((target: number) => {
-    "worklet";
-    translateY.value = withSpring(target, SPRING_CFG);
-  }, []);
-
-  const expandToHigh = useCallback(() => {
-    translateY.value = withSpring(TY_HIGH, SPRING_CFG);
-  }, []);
-
-  /* ── Snap up when keyboard shows, snap back when it hides ── */
-  const preKBSnap = useRef(TY_LOW);
-  useEffect(() => {
-    const show = Keyboard.addListener("keyboardDidShow", () => {
-      preKBSnap.current = translateY.value;
-      translateY.value = withSpring(TY_KB, SPRING_CFG);
-    });
-    const hide = Keyboard.addListener("keyboardDidHide", () => {
-      translateY.value = withSpring(
-        Math.max(preKBSnap.current, TY_HIGH),
-        SPRING_CFG,
-      );
-    });
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
-  /* ── Pan gesture ── */
-  const pan = Gesture.Pan()
-    .activeOffsetY([-25, 25])
-    .failOffsetX([-10, 10])
-    .onStart(() => {
-      ctx.value = translateY.value;
-    })
-    .onUpdate((e) => {
-      const rawY = ctx.value + e.translationY;
-      if (rawY < TY_HIGH) {
-        const overAmount = Math.min((TY_HIGH - rawY) / 80, 1);
-        overscrollGlow.value = overAmount;
-      } else {
-        overscrollGlow.value = withTiming(0, { duration: 150 });
-      }
-      translateY.value = Math.max(TY_HIGH, Math.min(rawY, TY_LOW));
-    })
-    .onEnd((e) => {
-      overscrollGlow.value = withTiming(0, { duration: 200 });
-      const cur = translateY.value;
-      const v = e.velocityY;
-      const FLING = 600;
-
-      if (Math.abs(v) > FLING) {
-        if (v > 0) {
-          snapTo(cur < TY_MID ? TY_MID : TY_LOW);
-          if (cur >= TY_MID) scheduleOnRN(dismissKB);
-        } else {
-          snapTo(cur > TY_MID ? TY_MID : TY_HIGH);
-        }
-        return;
-      }
-
-      const snaps = [TY_HIGH, TY_MID, TY_LOW];
-      let best = snaps[0];
-      let bestD = Math.abs(cur - snaps[0]);
-      for (const s of snaps) {
-        const d = Math.abs(cur - s);
-        if (d < bestD) {
-          bestD = d;
-          best = s;
-        }
-      }
-      snapTo(best);
-      if (best === TY_LOW) scheduleOnRN(dismissKB);
-    });
-
-  /* ── Animated styles ── */
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: overscrollGlow.value,
-  }));
-
-  const expandedOpacity = useAnimatedStyle(() => ({
-    opacity: interpolate(
-      translateY.value,
-      [TY_MID, TY_LOW],
-      [1, 0],
-      Extrapolation.CLAMP,
-    ),
-  }));
 
   /* ── Render ── */
   return (
@@ -645,7 +551,7 @@ export default function HomeScreen() {
                       onChangeText={handleDestChange}
                       onFocus={() => {
                         setDestFocused(true);
-                        expandToHigh();
+                        snapTo(1);
                         loadStops();
                       }}
                       onBlur={() => setDestFocused(false)}
@@ -776,13 +682,12 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: BG },
 
-
   sheetOuter: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_H,
+    bottom: 0,
     backgroundColor: SHEET_BG,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -949,9 +854,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 12,
     paddingBottom: 8,
-    
-   
-   
   },
   homeGreeting: {
     color: "#000000",
@@ -986,9 +888,6 @@ const styles = StyleSheet.create({
   mapCardOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  mapCardIcon: {
-    position: "absolute",
   },
   mapCardBadge: {
     flexDirection: "row",

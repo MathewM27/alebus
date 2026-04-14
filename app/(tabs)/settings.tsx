@@ -6,6 +6,7 @@ import SubscriptionSection, {
 } from "@/components/settings/SubscriptionSection";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMapTheme } from "@/contexts/MapThemeContext";
+import { useBottomSheet } from "@/hooks/useBottomSheet";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { Href, router } from "expo-router";
@@ -13,7 +14,6 @@ import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useState } from "react";
 import {
     Alert,
-    Dimensions,
     Image,
     Keyboard,
     Pressable,
@@ -22,9 +22,9 @@ import {
     Text,
     TouchableWithoutFeedback,
     View,
+    useWindowDimensions,
 } from "react-native";
 import {
-    Gesture,
     GestureDetector,
     GestureHandlerRootView,
 } from "react-native-gesture-handler";
@@ -32,14 +32,10 @@ import Animated, {
     Extrapolation,
     interpolate,
     useAnimatedStyle,
-    useSharedValue,
-    withSpring,
-    withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-/* ───────────── theme (same as journey/index) ───────────── */
-const { height: SCREEN_H } = Dimensions.get("window");
+/* ───────────── theme ───────────── */
 const ACCENT = "#c1ec72";
 const BG = "#212122";
 const SHEET_BG = "#000000";
@@ -47,17 +43,6 @@ const SURFACE = "#151518";
 const TEXT_PRIMARY = "#FFFFFF";
 const TEXT_SECONDARY = "rgba(255,255,255,0.65)";
 const BORDER = "rgba(255,255,255,0.12)";
-
-/* ── snap points ── */
-const SNAP_LOW = 160;
-const SNAP_MID = SCREEN_H * 0.35;
-const SNAP_HIGH = SCREEN_H * 0.5;
-
-const TY_HIGH = SCREEN_H - SNAP_HIGH;
-const TY_MID = SCREEN_H - SNAP_MID;
-const TY_LOW = SCREEN_H - SNAP_LOW;
-
-const SPRING_CFG = { damping: 26, stiffness: 260, mass: 0.8 };
 
 /* ───────────── Action Tile Component ───────────── */
 interface ActionTile {
@@ -68,31 +53,11 @@ interface ActionTile {
 }
 
 const ACTION_TILES: ActionTile[] = [
-  {
-    id: "profile",
-    icon: "account-edit-outline",
-    label: "Profile",
-    color: TEXT_PRIMARY,
-  },
-  {
-    id: "subscription",
-    icon: "hand-coin-outline",
-    label: "Subscription",
-    color: TEXT_PRIMARY,
-  },
-  {
-    id: "notification",
-    icon: "bell-outline",
-    label: "Notifications",
-    color: TEXT_PRIMARY,
-  },
-  {
-    id: "map-theme",
-    icon: "palette-outline",
-    label: "Map Theme",
-    color: TEXT_PRIMARY,
-  },
-  { id: "logout", icon: "logout", label: "Logout", color: "#ff6b6b" },
+  { id: "profile",      icon: "account-edit-outline", label: "Profile",       color: TEXT_PRIMARY },
+  { id: "subscription", icon: "hand-coin-outline",    label: "Subscription",  color: TEXT_PRIMARY },
+  { id: "notification", icon: "bell-outline",          label: "Notifications", color: TEXT_PRIMARY },
+  { id: "map-theme",    icon: "palette-outline",       label: "Map Theme",     color: TEXT_PRIMARY },
+  { id: "logout",       icon: "logout",                label: "Logout",        color: "#ff6b6b"    },
 ];
 
 function ActionTileButton({
@@ -176,8 +141,8 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { email, logout } = useAuth();
   const { mapTheme, setMapTheme } = useMapTheme();
+  const { height: screenHeight } = useWindowDimensions();
 
-  // Extract name from email or use placeholder
   const userName = email ? email.split("@")[0] : "User";
   const displayName = userName.charAt(0).toUpperCase() + userName.slice(1);
 
@@ -206,93 +171,50 @@ export default function SettingsScreen() {
   /* ── Map Theme state ── */
   const [showMapTheme, setShowMapTheme] = useState(false);
 
-  /* ── shared values ── */
-  const translateY = useSharedValue(TY_MID); // Start at MID
-  const ctx = useSharedValue(0);
-  const isSectionExpanded = useSharedValue(false); // Track if profile/subscription is open
-  const overscrollGlow = useSharedValue(0); // overscroll indicator
+  /* ── Track whether any expandable section is open ── */
+  const isSectionOpen =
+    showProfileEdit || showSubscription || showNotifications || showMapTheme;
 
-  const snapTo = useCallback((target: number) => {
-    "worklet";
-    translateY.value = withSpring(target, SPRING_CFG);
-  }, []);
+  /* ── Bottom sheet ──
+   * Snap points:
+   *   0 → 15% visible  (collapsed)
+   *   1 → 50% visible  (default — tiles visible)
+   *   2 → 85% visible  (expanded — profile / subscription open)
+   *
+   * maxSnapIndex = 1 by default so user can't drag above 50%.
+   * When a section is open, ceiling lifts to 2 programmatically.
+   */
+  const {
+    translateY,
+    sheetStyle,
+    pan,
+    snapTo,
+    TY,
+    glowStyle,
+    setSectionExpanded,
+  } = useBottomSheet({
+    screenHeight,
+    snapPoints: [0.15, 0.50, 0.85],
+    initialSnap: 1,
+    maxSnapIndex: isSectionOpen ? 2 : 1,
+    onKeyboardShow: true,  // FIX H: lift sheet when profile-edit inputs are focused
+  });
 
-  /* ── Pan gesture ── */
-  const pan = Gesture.Pan()
-    .activeOffsetY([-10, 10])
-    .failOffsetX([-15, 15])
-    .onStart(() => {
-      ctx.value = translateY.value;
-    })
-    .onUpdate((e) => {
-      const rawY = ctx.value + e.translationY;
-      // Restrict to MID minimum when no section is expanded
-      const minY = isSectionExpanded.value ? TY_HIGH : TY_MID;
-      // Track overscroll when trying to go beyond max height
-      if (rawY < minY) {
-        const overAmount = Math.min((minY - rawY) / 80, 1);
-        overscrollGlow.value = overAmount;
-      } else {
-        overscrollGlow.value = withTiming(0, { duration: 150 });
-      }
-      translateY.value = Math.max(minY, Math.min(rawY, TY_LOW));
-    })
-    .onEnd((e) => {
-      overscrollGlow.value = withTiming(0, { duration: 200 });
-      const cur = translateY.value;
-      const v = e.velocityY;
-      const FLING = 600;
-
-      // Choose snap points based on whether section is expanded
-      const snaps = isSectionExpanded.value
-        ? [TY_HIGH, TY_MID, TY_LOW]
-        : [TY_MID, TY_LOW];
-
-      if (Math.abs(v) > FLING) {
-        if (v > 0) {
-          // Fling down
-          snapTo(cur < TY_MID ? TY_MID : TY_LOW);
-        } else {
-          // Fling up - only allow HIGH if section is expanded
-          if (isSectionExpanded.value) {
-            snapTo(cur > TY_MID ? TY_MID : TY_HIGH);
-          } else {
-            snapTo(TY_MID);
-          }
-        }
-        return;
-      }
-
-      // Find closest snap point
-      let best = snaps[0];
-      let bestD = Math.abs(cur - snaps[0]);
-      for (const snap of snaps) {
-        const d = Math.abs(cur - snap);
-        if (d < bestD) {
-          bestD = d;
-          best = snap;
-        }
-      }
-      snapTo(best);
-    });
-
-  /* ── Animated styles ── */
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  const glowStyle = useAnimatedStyle(() => ({
-    opacity: overscrollGlow.value,
-  }));
-
+  /* ── expandedOpacity: fade content when sheet collapses ── */
   const expandedOpacity = useAnimatedStyle(() => ({
     opacity: interpolate(
       translateY.value,
-      [TY_MID, TY_LOW],
+      [TY[1], TY[0]],  // default → collapsed
       [1, 0],
       Extrapolation.CLAMP,
     ),
   }));
+
+  /* ── Open/close a tile section ── */
+  const openSection = useCallback((open: boolean) => {
+    snapTo(open ? 2 : 1);
+    setSectionExpanded(open);
+  }, [snapTo, setSectionExpanded]);
 
   /* ── Handlers ── */
   const handleLogout = () => {
@@ -313,65 +235,42 @@ export default function SettingsScreen() {
     if (tileId === "profile") {
       const willOpen = !showProfileEdit;
       setShowProfileEdit(willOpen);
-      setShowSubscription(false); // Close other panels
+      setShowSubscription(false);
       setShowMapTheme(false);
       setShowNotifications(false);
-
-      // Update expanded state and snap accordingly
-      isSectionExpanded.value = willOpen;
-      if (willOpen) {
-        snapTo(TY_HIGH); // Auto-snap to HIGH when opening
-      } else {
-        snapTo(TY_MID); // Snap back to MID when closing
+      openSection(willOpen);
+      if (!willOpen) {
         setEditingName(false);
         setEditingEmail(false);
       }
     } else if (tileId === "subscription") {
       const willOpen = !showSubscription;
       setShowSubscription(willOpen);
-      setShowProfileEdit(false); // Close other panels
+      setShowProfileEdit(false);
       setShowMapTheme(false);
       setShowNotifications(false);
-
-      // Update expanded state and snap accordingly
-      isSectionExpanded.value = willOpen;
-      if (willOpen) {
-        snapTo(TY_HIGH); // Auto-snap to HIGH when opening
-      } else {
-        snapTo(TY_MID); // Snap back to MID when closing
+      openSection(willOpen);
+      if (!willOpen) {
         setSelectedPlan(null);
         setShowPaymentOptions(false);
         setSelectedPayment(null);
       }
-    } else if (tileId === "logout") {
-      handleLogout();
     } else if (tileId === "map-theme") {
       const willOpen = !showMapTheme;
       setShowMapTheme(willOpen);
-      setShowProfileEdit(false); // Close other panels
+      setShowProfileEdit(false);
       setShowSubscription(false);
       setShowNotifications(false);
-
-      // Update expanded state and snap accordingly
-      isSectionExpanded.value = willOpen;
-      if (willOpen) {
-        snapTo(TY_HIGH); // Auto-snap to HIGH when opening
-      } else {
-        snapTo(TY_MID); // Snap back to MID when closing
-      }
+      openSection(willOpen);
     } else if (tileId === "notification") {
       const willOpen = !showNotifications;
       setShowNotifications(willOpen);
       setShowProfileEdit(false);
       setShowSubscription(false);
       setShowMapTheme(false);
-
-      isSectionExpanded.value = willOpen;
-      if (willOpen) {
-        snapTo(TY_HIGH);
-      } else {
-        snapTo(TY_MID);
-      }
+      openSection(willOpen);
+    } else if (tileId === "logout") {
+      handleLogout();
     } else {
       console.log("Pressed:", tileId);
     }
@@ -379,7 +278,6 @@ export default function SettingsScreen() {
 
   const handleUpdateProfile = () => {
     console.log("Update profile:", { name: profileName, email: profileEmail });
-    // TODO: Implement actual profile update
     setEditingName(false);
     setEditingEmail(false);
   };
@@ -393,11 +291,7 @@ export default function SettingsScreen() {
   };
 
   const handleConfirmPayment = () => {
-    console.log("Confirm payment:", {
-      plan: selectedPlan,
-      method: selectedPayment,
-    });
-    // TODO: Implement actual payment processing
+    console.log("Confirm payment:", { plan: selectedPlan, method: selectedPayment });
     Alert.alert(
       "Payment",
       `Processing ${selectedPlan === "monthly" ? "1 Month (Rs 100)" : "12 Months (Rs 1200)"} subscription via ${selectedPayment === "card" ? "Credit Card" : "Juice"}`,
@@ -407,7 +301,6 @@ export default function SettingsScreen() {
 
   const handleSocialPress = (platform: string) => {
     console.log("Open:", platform);
-    // TODO: Open social links
   };
 
   return (
@@ -420,20 +313,12 @@ export default function SettingsScreen() {
           <View style={[styles.profileArea, { paddingTop: insets.top + 16 }]}>
             {/* Back button */}
             <Pressable style={styles.backBtn} onPress={() => router.back()}>
-              <MaterialCommunityIcons
-                name="chevron-left"
-                size={28}
-                color="#FFFFFF"
-              />
+              <MaterialCommunityIcons name="chevron-left" size={28} color="#FFFFFF" />
             </Pressable>
 
             {/* Menu button */}
             <Pressable style={styles.menuBtn}>
-              <MaterialCommunityIcons
-                name="dots-vertical"
-                size={24}
-                color="#FFFFFF"
-              />
+              <MaterialCommunityIcons name="dots-vertical" size={24} color="#FFFFFF" />
             </Pressable>
 
             {/* Profile Picture */}
@@ -453,26 +338,10 @@ export default function SettingsScreen() {
 
             {/* Social Links */}
             <View style={styles.socialRow}>
-              <SocialLink
-                icon="instagram"
-                color="#E4405F"
-                onPress={() => handleSocialPress("instagram")}
-              />
-              <SocialLink
-                icon="facebook"
-                color="#1877F2"
-                onPress={() => handleSocialPress("facebook")}
-              />
-              <SocialLink
-                icon="linkedin"
-                color="#0A66C2"
-                onPress={() => handleSocialPress("linkedin")}
-              />
-              <SocialLink
-                icon="whatsapp"
-                color="#25D366"
-                onPress={() => handleSocialPress("whatsapp")}
-              />
+              <SocialLink icon="instagram"  color="#E4405F" onPress={() => handleSocialPress("instagram")} />
+              <SocialLink icon="facebook"   color="#1877F2" onPress={() => handleSocialPress("facebook")} />
+              <SocialLink icon="linkedin"   color="#0A66C2" onPress={() => handleSocialPress("linkedin")} />
+              <SocialLink icon="whatsapp"   color="#25D366" onPress={() => handleSocialPress("whatsapp")} />
             </View>
           </View>
 
@@ -546,11 +415,7 @@ export default function SettingsScreen() {
               {/* Notifications Section */}
               {showNotifications && (
                 <View style={styles.notificationsCard}>
-                  <MaterialCommunityIcons
-                    name="bell-off-outline"
-                    size={20}
-                    color={TEXT_SECONDARY}
-                  />
+                  <MaterialCommunityIcons name="bell-off-outline" size={20} color={TEXT_SECONDARY} />
                   <Text style={styles.notificationsText}>No notifications</Text>
                 </View>
               )}
@@ -581,7 +446,7 @@ export default function SettingsScreen() {
             </Animated.View>
           </GestureDetector>
 
-          {/* Overscroll glow effect - positioned at actual screen bottom */}
+          {/* Overscroll glow */}
           <Animated.View
             style={[styles.glowOverlay, glowStyle]}
             pointerEvents="none"
@@ -671,7 +536,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_H,
+    bottom: 0,
     backgroundColor: SHEET_BG,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,

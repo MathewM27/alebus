@@ -1,8 +1,8 @@
 import MapThemeSection from "@/components/settings/MapThemeSection";
 import ProfileEditSection from "@/components/settings/ProfileEditSection";
 import SubscriptionSection, {
-    PaymentMethod,
-    PlanType,
+  PaymentMethod,
+  PlanType,
 } from "@/components/settings/SubscriptionSection";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMapTheme } from "@/contexts/MapThemeContext";
@@ -13,25 +13,25 @@ import { Href, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    Alert,
-    Image,
-    Keyboard,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableWithoutFeedback,
-    View,
-    useWindowDimensions,
+  Alert,
+  Image,
+  Keyboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableWithoutFeedback,
+  View,
+  useWindowDimensions,
 } from "react-native";
 import {
-    GestureDetector,
-    GestureHandlerRootView,
+  GestureDetector,
+  GestureHandlerRootView,
 } from "react-native-gesture-handler";
 import Animated, {
-    Extrapolation,
-    interpolate,
-    useAnimatedStyle,
+  Extrapolation,
+  interpolate,
+  useAnimatedStyle,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -194,7 +194,7 @@ export default function SettingsScreen() {
     setSectionExpanded,
   } = useBottomSheet({
     screenHeight,
-    snapPoints: [0.15, 0.50, 0.85],
+    snapPoints: [0.15, 0.40, 0.85],
     initialSnap: 1,
     maxSnapIndex: isSectionOpen ? 2 : 1,
     onKeyboardShow: true,  // FIX H: lift sheet when profile-edit inputs are focused

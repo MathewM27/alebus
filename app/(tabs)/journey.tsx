@@ -47,12 +47,12 @@ import {
   loadActiveJourneys,
   type CreateJourneyResponse,
 } from "@/services/api/journey";
+import { fetchRouteStops, type RouteStop } from "@/services/api/stops";
 import {
   getMeProfile,
   setShortcuts as saveShortcutsToBackend,
   savedLocationsToShortcuts,
 } from "@/services/api/users";
-import { fetchRouteStops, type RouteStop } from "@/services/api/stops";
 import { busMuxClient } from "@/services/ws/busMuxClient";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 import { pathAfterFraction, roadPosition } from "@/utils/routeGeometry";
@@ -141,7 +141,7 @@ export default function JourneyScreen() {
    * maxSnapIndex is controlled by state so the drag ceiling adjusts dynamically.
    * Programmatic snapTo() bypasses the ceiling (edit form, recommendations).
    */
-  const maxSnapIndex = isEditingShortcut ? 3 : hasRecommendations ? 2 : 1;
+  const maxSnapIndex = isEditingShortcut ? 3 : 2;
 
   const {
     translateY,
@@ -153,7 +153,7 @@ export default function JourneyScreen() {
     setSectionExpanded,
   } = useBottomSheet({
     screenHeight,
-    snapPoints: [0.15, 0.50, 0.75, 0.92],
+    snapPoints: [0.15, 0.20, 0.55, 0.92],
     initialSnap: 1,
     maxSnapIndex,
     onKeyboardShow: true,  // lift to index 3 when keyboard appears (shortcut edit inputs)
@@ -488,7 +488,7 @@ export default function JourneyScreen() {
   const handleEditStart = useCallback(() => {
     setIsEditingShortcut(true);
     setSectionExpanded(true);
-    snapTo(3); // expand to edit form height
+    snapTo(2); // expand to edit form height
   }, [snapTo, setSectionExpanded]);
 
   const handleEditClose = useCallback(() => {

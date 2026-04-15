@@ -341,7 +341,7 @@ export default function HomeScreen() {
               <Text style={styles.homeGreetingSub}>Where are you heading?</Text>
             </View>
             <View style={styles.homeHeaderIcon}>
-              <Image source={require("@/assets/images/splash-icon-1.png")} style={{ width: 28, height: 28, resizeMode: "contain" }} />
+              <Image source={require("@/assets/images/indexpic.png")} style={{ width: 36, height: 44, resizeMode: "contain" }} />
             </View>
           </View>
 
@@ -866,12 +866,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   homeHeaderIcon: {
-    width: 74,
+    width: 54,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(0,0,0,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(0,0,0,0.1)",
+   
     alignItems: "center",
     justifyContent: "center",
   },

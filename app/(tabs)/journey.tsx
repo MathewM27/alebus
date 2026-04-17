@@ -55,7 +55,10 @@ import {
 import { fetchRouteStops, type RouteStop } from "@/services/api/stops";
 import { busMuxClient } from "@/services/ws/busMuxClient";
 import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
-import { pathAfterFraction, roadPosition } from "@/utils/routeGeometry";
+// LEGACY DISABLED: roadPosition, pathAfterFraction (with FractionalIndex) commented out.
+// Re-enable if restoring stopIndex+fractionalIndex fallback.
+// import { pathAfterFraction, roadPosition, segmentPctToPosition } from "@/utils/routeGeometry";
+import { findStopAtPct, routeSegmentFromPct, segmentPctToPosition } from "@/utils/routeGeometry";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 /* ───────────── theme ───────────── */
@@ -433,56 +436,31 @@ export default function JourneyScreen() {
     });
   }, [busDetails?.routeId]);
 
-  /* ── Rebuild road polyline whenever bus advances to a new stop ── */
+  /* ── Rebuild road polyline whenever bus position or route changes ── */
   useEffect(() => {
-    const stopIndex = latestBus?.StopIndex ?? busDetails?.stopIndex;
-    if (!routeStops || routeStops.length < 2 || stopIndex == null) return;
+    const segPct = latestBus?.SegmentPct ?? 0;
+    if (!routeStops || routeStops.length < 2 || segPct <= 0) {
+      setRouteSegment(undefined);
+      return;
+    }
     const originStopId = recommendations[0]?.originStopId;
 
-    const busStop = routeStops.find((s) => s.seq === stopIndex);
-    setBusStopName(busStop?.name ?? null);
-    console.log("[journey] bus stop name:", busStop?.name, "seq:", stopIndex);
+    // Derive current stop from segmentPct for name labels.
+    const { currentStop } = findStopAtPct(routeStops, segPct);
+    setBusStopName(currentStop?.name ?? null);
+    console.log("[journey] bus stop name:", currentStop?.name, "segPct:", segPct);
 
     if (!originStopId) return;
     const userStop = routeStops.find((s) => s.id === originStopId);
     setUserStopName(userStop?.name ?? null);
     console.log("[journey] user stop name:", userStop?.name, "id:", originStopId);
 
-    if (!busStop || !userStop) return;
+    if (!userStop) return;
 
-    const busHasPassed = busStop.seq > userStop.seq;
-    const busIsAtUserStop = busStop.seq === userStop.seq;
-    if (busHasPassed || busIsAtUserStop) {
-      setRouteSegment(undefined);
-      return;
-    }
-
-    const frac = Math.max(0, Math.min(1, latestBusRef.current?.FractionalIndex ?? 0));
-    const busPathToNext = busStop.pathToNext ?? [];
-    if (busPathToNext.length === 0) {
-      setRouteSegment(undefined);
-      return;
-    }
-
-    const snappedStart = roadPosition(routeStops, busStop.seq, frac);
-    if (!snappedStart) {
-      setRouteSegment(undefined);
-      return;
-    }
-
-    const coords: { lat: number; lon: number }[] = [snappedStart];
-    const remaining = pathAfterFraction(busPathToNext, frac);
-    coords.push(...remaining.slice(1));
-
-    for (let seq = busStop.seq + 1; seq < userStop.seq; seq++) {
-      const seg = routeStops.find((s) => s.seq === seq);
-      if (seg?.pathToNext?.length) {
-        coords.push(...seg.pathToNext);
-      }
-    }
-    coords.push({ lat: userStop.lat, lon: userStop.lon });
-    setRouteSegment(coords.length >= 2 ? coords : undefined);
-  }, [routeStops, latestBus?.StopIndex, recommendations[0]?.originStopId]);
+    // routeSegmentFromPct returns null when bus has passed the destination.
+    const coords = routeSegmentFromPct(routeStops, segPct, originStopId);
+    setRouteSegment(coords ?? undefined);
+  }, [routeStops, latestBus?.SegmentPct, recommendations[0]?.originStopId]);
 
   /* ── Edit shortcut handlers ── */
   const handleEditStart = useCallback(() => {
@@ -572,10 +550,11 @@ export default function JourneyScreen() {
 
   const cameraTarget = useMemo(() => {
     if (!latestBus) return undefined;
-    const frac = Math.max(0, Math.min(1, latestBus.FractionalIndex));
+    // LEGACY DISABLED: roadPosition(routeStops, latestBus.StopIndex, ...) commented out.
+    // Re-enable if restoring stopIndex+fractionalIndex fallback.
     const snapped =
       routeStops && routeStops.length >= 2
-        ? roadPosition(routeStops, latestBus.StopIndex, frac)
+        ? segmentPctToPosition(routeStops, latestBus.SegmentPct)
         : null;
     return snapped ?? { lat: latestBus.Position.Lat, lon: latestBus.Position.Lon };
   }, [latestBus, routeStops]);
@@ -584,11 +563,7 @@ export default function JourneyScreen() {
   const navBanner = useMemo(() => {
     if (!latestBus || !routeStops || routeStops.length === 0) return null;
 
-    const sorted = [...routeStops].sort((a, b) => a.seq - b.seq);
-    const currentStop = sorted.find((s) => s.seq === latestBus.StopIndex);
-    const nextStop = sorted.find((s) => s.seq === latestBus.StopIndex + 1);
-
-    const isAtStop = latestBus.FractionalIndex < 0.08;
+    const { currentStop, nextStop, isAtStop } = findStopAtPct(routeStops, latestBus.SegmentPct);
 
     let statusText: string;
     if (latestBus.IsAtTerminal) {

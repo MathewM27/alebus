@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { busMuxClient, type WsBusDTO } from '@/services/ws/busMuxClient';
+import { rawPositionClient } from '@/services/ws/rawPositionClient';
 import type { RouteStop } from '@/services/api/stops';
-import { roadPosition } from '@/utils/routeGeometry';
+// LEGACY DISABLED: roadPosition import commented out — only segmentPct path active.
+// Re-enable if restoring stopIndex+fractionalIndex fallback.
+// import { roadPosition, segmentPctToPosition } from '@/utils/routeGeometry';
+import { segmentPctToPosition } from '@/utils/routeGeometry';
 
 // Interpolation window in ms — covers roughly one GPS publish cycle (~2–3 s).
 // Keeping it at 3 s means the marker always has somewhere to move to, producing
@@ -74,7 +78,10 @@ export function useBusPosition(
     // doesn't jump from the raw GPS fallback to the snapped road position.
     const bus = latestBusRef.current;
     if (!routeStops || routeStops.length < 2 || !bus) return;
-    const snapped = roadPosition(routeStops, bus.StopIndex, bus.FractionalIndex);
+    // LEGACY DISABLED — stopIndex+fractionalIndex snapping commented out.
+    // Only segmentPct-based snapping runs. Re-enable fallback if needed:
+    // : roadPosition(routeStops, bus.StopIndex, bus.FractionalIndex)
+    const snapped = segmentPctToPosition(routeStops, bus.SegmentPct);
     if (!snapped) return;
     // Snap without animation: set from === to === snapped so no LERP runs.
     lerpRef.current = {
@@ -127,6 +134,21 @@ export function useBusPosition(
       lastTimestampRef.current = -1; // Bug #2: also reset timestamp guard on reconnect
     });
 
+    // ── Fast-lane: raw GPS frames (~1 s cadence) ─────────────────────────────
+    // Raw frames arrive before enrichment completes and keep the marker moving
+    // between enriched bus.update frames. We use the raw lat/lon directly as
+    // the LERP target; the next enriched frame will road-snap it to the polyline.
+    const offRaw = rawPositionClient.subscribe(busId, (raw) => {
+      const s = lerpRef.current;
+      const target: DisplayPosition = { lat: raw.lat, lon: raw.lon };
+      lerpRef.current = {
+        from: s.current ?? target,
+        to:   target,
+        current: s.current,
+        startTime: Date.now(),
+      };
+    });
+
     const off = busMuxClient.onBusUpdate((frame) => {
       // The mux may carry updates for other buses; filter to the one we care about.
       if (frame.bus.BusID !== busId) return;
@@ -151,9 +173,12 @@ export function useBusPosition(
       // Compute road-snapped target when route geometry is available.
       // Fall back to raw GPS if snapping returns null (e.g. first frame before stops load).
       const stops = routeStopsRef.current;
+      // LEGACY DISABLED — stopIndex+fractionalIndex snapping commented out.
+      // Re-enable fallback if needed:
+      // : roadPosition(stops, bus.StopIndex, bus.FractionalIndex)
       const snapped =
         stops && stops.length >= 2
-          ? roadPosition(stops, bus.StopIndex, bus.FractionalIndex)
+          ? segmentPctToPosition(stops, bus.SegmentPct)
           : null;
       const target: DisplayPosition = snapped ?? {
         lat: bus.Position.Lat,
@@ -174,6 +199,7 @@ export function useBusPosition(
 
     return () => {
       off();
+      offRaw();
       offConnect();
     };
   }, [busId]);

@@ -96,6 +96,204 @@ export function roadPosition(
 }
 
 /**
+ * Build cumulative distances for each stop using cumulativeDistance from the API
+ * when available, falling back to straight-line haversine between stops.
+ * Returns an array of length stops.length where [i] = distance from route start to stop i.
+ */
+function buildCumDists(sorted: RouteStop[]): number[] {
+  const cumDists: number[] = [0];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i];
+    const b = sorted[i + 1];
+    const segLen =
+      a.cumulativeDistance != null && b.cumulativeDistance != null
+        ? b.cumulativeDistance - a.cumulativeDistance
+        : haversine(a, b);
+    cumDists.push(cumDists[i] + Math.max(0, segLen));
+  }
+  return cumDists;
+}
+
+/**
+ * Returns the road polyline from the bus's current segmentPct position forward
+ * to the stop identified by toStopId.
+ *
+ * Used to draw the "ahead" route segment on the map (bus → user boarding stop).
+ * Replaces the legacy FractionalIndex + pathAfterFraction approach.
+ *
+ * Returns null if segmentPct is 0 (not yet enriched), the destination stop is not
+ * found, or the bus has already passed the destination.
+ */
+export function routeSegmentFromPct(
+  stops: RouteStop[],
+  segmentPct: number,
+  toStopId: string,
+): { lat: number; lon: number }[] | null {
+  if (!stops || stops.length < 2 || segmentPct <= 0) return null;
+
+  const sorted = [...stops].sort((a, b) => a.seq - b.seq);
+  const toIdx = sorted.findIndex(s => s.id === toStopId);
+  if (toIdx < 0) return null;
+
+  const cumDists = buildCumDists(sorted);
+  const totalLen = cumDists[cumDists.length - 1];
+  if (totalLen === 0) return null;
+
+  const busAbsDist = Math.min(segmentPct, 1) * totalLen;
+
+  // Find which stop-to-stop segment the bus is currently on.
+  let busSegIdx = sorted.length - 2; // default: last segment
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (busAbsDist <= cumDists[i + 1]) {
+      busSegIdx = i;
+      break;
+    }
+  }
+
+  // Bus has already passed the destination stop.
+  if (busSegIdx >= toIdx) return null;
+
+  // Within-segment fraction along the current stop's pathToNext.
+  const segLen = cumDists[busSegIdx + 1] - cumDists[busSegIdx];
+  const withinFrac = segLen > 0 ? (busAbsDist - cumDists[busSegIdx]) / segLen : 0;
+
+  const coords: { lat: number; lon: number }[] = [];
+
+  // Remainder of the current segment (road polyline from bus position forward).
+  const busPath = sorted[busSegIdx].pathToNext;
+  const effectivePath =
+    busPath && busPath.length >= 2
+      ? busPath
+      : [{ lat: sorted[busSegIdx].lat, lon: sorted[busSegIdx].lon },
+         { lat: sorted[busSegIdx + 1].lat, lon: sorted[busSegIdx + 1].lon }];
+  coords.push(...pathAfterFraction(effectivePath, withinFrac));
+
+  // Remaining segments between current and destination.
+  for (let i = busSegIdx + 1; i < toIdx; i++) {
+    const path = sorted[i].pathToNext;
+    if (path && path.length >= 2) {
+      coords.push(...path.slice(1)); // skip first — already end of previous segment
+    } else {
+      coords.push({ lat: sorted[i].lat, lon: sorted[i].lon });
+    }
+  }
+
+  // Destination stop coordinate.
+  coords.push({ lat: sorted[toIdx].lat, lon: sorted[toIdx].lon });
+
+  return coords.length >= 2 ? coords : null;
+}
+
+/**
+ * Derives the current and next stop from segmentPct + cumulative distances.
+ * Replaces the legacy StopIndex-based approach for nav banner labels.
+ *
+ * Returns { currentStop, nextStop, isAtStop } where:
+ *   currentStop — the last stop the bus has reached or passed
+ *   nextStop    — the stop immediately ahead (null if at the terminal)
+ *   isAtStop    — true when the bus is within 2% of totalRouteLength of currentStop
+ */
+export function findStopAtPct(
+  stops: RouteStop[],
+  segmentPct: number,
+): { currentStop: RouteStop | null; nextStop: RouteStop | null; isAtStop: boolean } {
+  const none = { currentStop: null, nextStop: null, isAtStop: false };
+  if (!stops || stops.length === 0 || segmentPct <= 0) return none;
+
+  const sorted = [...stops].sort((a, b) => a.seq - b.seq);
+  const cumDists = buildCumDists(sorted);
+  const totalLen = cumDists[cumDists.length - 1];
+  if (totalLen === 0) return none;
+
+  const busAbsDist = Math.min(segmentPct, 1) * totalLen;
+
+  // Find the last stop the bus has reached (cumDist <= busAbsDist).
+  let currentIdx = 0;
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    if (cumDists[i] <= busAbsDist) {
+      currentIdx = i;
+      break;
+    }
+  }
+
+  const currentStop = sorted[currentIdx];
+  const nextStop = currentIdx < sorted.length - 1 ? sorted[currentIdx + 1] : null;
+
+  // "At stop" when within 2% of totalLen of the stop's position.
+  const distToStop = Math.abs(busAbsDist - cumDists[currentIdx]);
+  const isAtStop = distToStop / totalLen < 0.02;
+
+  return { currentStop, nextStop, isAtStop };
+}
+
+/**
+ * Road-snapped position using segmentPct (v2 architecture).
+ *
+ * segmentPct is the bus's fractional position [0.0–1.0] along the full
+ * route polyline, as computed by the backend's ComputeSegmentPct function.
+ * It replaces the legacy stopIndex + fractionalIndex approach.
+ *
+ * Strategy:
+ *   1. Build a flat polyline by concatenating each stop's pathToNext geometry.
+ *      If pathToNext is missing for a segment, fall back to straight stop-to-stop.
+ *   2. Walk along that polyline to segmentPct × totalLength.
+ *
+ * Returns null if stops are missing or segmentPct is 0 (not yet enriched).
+ */
+export function segmentPctToPosition(
+  stops: RouteStop[],
+  segmentPct: number,
+): { lat: number; lon: number } | null {
+  if (!stops || stops.length < 2 || segmentPct <= 0) return null;
+
+  const sorted = [...stops].sort((a, b) => a.seq - b.seq);
+
+  // Build the full route polyline by concatenating pathToNext segments.
+  const polyline: { lat: number; lon: number }[] = [];
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const from = sorted[i];
+    const path = from.pathToNext;
+    if (path && path.length >= 2) {
+      // Include all points except the last (it equals the next stop's first point).
+      for (let j = 0; j < path.length - 1; j++) {
+        polyline.push(path[j]);
+      }
+    } else {
+      polyline.push({ lat: from.lat, lon: from.lon });
+    }
+  }
+  // Add the final stop.
+  polyline.push({ lat: sorted[sorted.length - 1].lat, lon: sorted[sorted.length - 1].lon });
+
+  if (polyline.length < 2) return null;
+
+  // Compute cumulative segment lengths.
+  let totalLen = 0;
+  const segLengths: number[] = [];
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const d = haversine(polyline[i], polyline[i + 1]);
+    segLengths.push(d);
+    totalLen += d;
+  }
+  if (totalLen === 0) return polyline[0];
+
+  const target = Math.min(segmentPct, 1) * totalLen;
+  let traveled = 0;
+  for (let i = 0; i < segLengths.length; i++) {
+    const segLen = segLengths[i];
+    if (traveled + segLen >= target) {
+      const segT = segLen > 0 ? (target - traveled) / segLen : 0;
+      return {
+        lat: polyline[i].lat + (polyline[i + 1].lat - polyline[i].lat) * segT,
+        lon: polyline[i].lon + (polyline[i + 1].lon - polyline[i].lon) * segT,
+      };
+    }
+    traveled += segLen;
+  }
+  return polyline[polyline.length - 1];
+}
+
+/**
  * Returns the portion of a polyline STARTING at fraction t (0–1).
  * The first point is the interpolated position at t; subsequent points
  * are the original path vertices from that segment onward.

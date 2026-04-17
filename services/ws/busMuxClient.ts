@@ -33,8 +33,9 @@ export interface WsBusDTO {
   TerminalArrivalTime: string;
   Position: WsBusPosition;
   UpdatedAt: string;
-  FractionalIndex: number;  // 0.0–1.0 within current segment
+  FractionalIndex: number;  // 0.0–1.0 within current segment (legacy)
   Heading: number;          // compass bearing 0–360
+  SegmentPct: number;       // v2: fractional position along full route polyline [0.0–1.0]; 0 if not yet enriched
 }
 
 // wsMuxBusUpdateEvent data shape (has json tags in Go)

@@ -113,6 +113,7 @@ export interface RouteStop {
   lat: number;
   lon: number;
   seq: number;
+  cumulativeDistance?: number; // metres from route start (cumulative_distance from API); used for segmentPct snapping
   pathToNext?: { lat: number; lon: number }[];
 }
 
@@ -122,12 +123,33 @@ const routeStopsCache: Map<string, RouteStop[]> = new Map();
  * Fetch ordered stops for a route (with names + coordinates).
  * Cached per routeId for the session.
  */
+// Raw shape returned by the Go API (snake_case json tags on StopDTO).
+interface RawStopDTO {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  seq: number;
+  cumulative_distance?: number;
+  path_to_next?: { lat: number; lon: number }[];
+}
+
 export async function fetchRouteStops(routeId: string): Promise<RouteStop[]> {
   if (routeStopsCache.has(routeId)) return routeStopsCache.get(routeId)!;
   try {
     const client = createAuthenticatedClient();
-    const data = await client.get<{ stops: RouteStop[] }>(`/routes/${encodeURIComponent(routeId)}`);
-    const stops = (data.stops ?? []).filter(s => s.lat && s.lon);
+    const data = await client.get<{ stops: RawStopDTO[] }>(`/routes/${encodeURIComponent(routeId)}`);
+    const stops: RouteStop[] = (data.stops ?? [])
+      .filter(s => s.lat && s.lon)
+      .map(s => ({
+        id:                  s.id,
+        name:                s.name,
+        lat:                 s.lat,
+        lon:                 s.lon,
+        seq:                 s.seq,
+        cumulativeDistance:  s.cumulative_distance,
+        pathToNext:          s.path_to_next,
+      }));
     routeStopsCache.set(routeId, stops);
     return stops;
   } catch (e: any) {

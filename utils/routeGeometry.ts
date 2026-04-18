@@ -227,6 +227,88 @@ export function findStopAtPct(
 }
 
 /**
+ * Build a cross-route polyline when the bus is on the paired route.
+ *
+ * Path: [bus position → busRouteStops terminal] + [userRouteStops start → user's boarding stop]
+ *
+ * busRouteStops  — ordered stops for the route the bus is currently on
+ * userRouteStops — ordered stops for the route the user's journey is on
+ * segmentPct     — bus's current fractional position on busRouteStops
+ * toStopId       — user's boarding stop ID (must exist in userRouteStops)
+ *
+ * Returns null if geometry is insufficient or toStopId is not in userRouteStops.
+ */
+export function crossRouteSegmentFromPct(
+  busRouteStops: RouteStop[],
+  userRouteStops: RouteStop[],
+  segmentPct: number,
+  toStopId: string,
+): { lat: number; lon: number }[] | null {
+  if (!busRouteStops || busRouteStops.length < 2 || segmentPct <= 0) return null;
+  if (!userRouteStops || userRouteStops.length < 2) return null;
+
+  const busSorted  = [...busRouteStops].sort((a, b) => a.seq - b.seq);
+  const userSorted = [...userRouteStops].sort((a, b) => a.seq - b.seq);
+
+  const toIdx = userSorted.findIndex(s => s.id === toStopId);
+  if (toIdx < 0) return null;
+
+  const busCumDists  = buildCumDists(busSorted);
+  const busTotalLen  = busCumDists[busCumDists.length - 1];
+  if (busTotalLen === 0) return null;
+
+  const busAbsDist = Math.min(segmentPct, 1) * busTotalLen;
+
+  // Find which segment the bus is currently on.
+  let busSegIdx = busSorted.length - 2;
+  for (let i = 0; i < busSorted.length - 1; i++) {
+    if (busAbsDist <= busCumDists[i + 1]) {
+      busSegIdx = i;
+      break;
+    }
+  }
+
+  const segLen    = busCumDists[busSegIdx + 1] - busCumDists[busSegIdx];
+  const withinFrac = segLen > 0 ? (busAbsDist - busCumDists[busSegIdx]) / segLen : 0;
+
+  const coords: { lat: number; lon: number }[] = [];
+
+  // Part 1: bus position → bus route terminal
+  const busPath = busSorted[busSegIdx].pathToNext;
+  const effectiveBusPath =
+    busPath && busPath.length >= 2
+      ? busPath
+      : [{ lat: busSorted[busSegIdx].lat, lon: busSorted[busSegIdx].lon },
+         { lat: busSorted[busSegIdx + 1].lat, lon: busSorted[busSegIdx + 1].lon }];
+  coords.push(...pathAfterFraction(effectiveBusPath, withinFrac));
+
+  for (let i = busSegIdx + 1; i < busSorted.length - 1; i++) {
+    const path = busSorted[i].pathToNext;
+    if (path && path.length >= 2) {
+      coords.push(...path.slice(1));
+    } else {
+      coords.push({ lat: busSorted[i].lat, lon: busSorted[i].lon });
+    }
+  }
+  coords.push({ lat: busSorted[busSorted.length - 1].lat, lon: busSorted[busSorted.length - 1].lon });
+
+  // Part 2: user route start → user's boarding stop
+  const firstUser = userSorted[0];
+  coords.push({ lat: firstUser.lat, lon: firstUser.lon });
+  for (let i = 0; i < toIdx; i++) {
+    const path = userSorted[i].pathToNext;
+    if (path && path.length >= 2) {
+      coords.push(...path.slice(1));
+    } else {
+      coords.push({ lat: userSorted[i + 1].lat, lon: userSorted[i + 1].lon });
+    }
+  }
+  coords.push({ lat: userSorted[toIdx].lat, lon: userSorted[toIdx].lon });
+
+  return coords.length >= 2 ? coords : null;
+}
+
+/**
  * Road-snapped position using segmentPct (v2 architecture).
  *
  * segmentPct is the bus's fractional position [0.0–1.0] along the full

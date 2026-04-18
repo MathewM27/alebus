@@ -16,6 +16,7 @@ export type JourneyTrackingDTO = {
   originLat?: number;
   originLon?: number;
 
+  routeId?: string;
   originStopId: string;
   destinationStopId: string;
 

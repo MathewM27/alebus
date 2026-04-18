@@ -58,7 +58,7 @@ import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 // LEGACY DISABLED: roadPosition, pathAfterFraction (with FractionalIndex) commented out.
 // Re-enable if restoring stopIndex+fractionalIndex fallback.
 // import { pathAfterFraction, roadPosition, segmentPctToPosition } from "@/utils/routeGeometry";
-import { findStopAtPct, routeSegmentFromPct, segmentPctToPosition } from "@/utils/routeGeometry";
+import { crossRouteSegmentFromPct, findStopAtPct, routeSegmentFromPct, segmentPctToPosition } from "@/utils/routeGeometry";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 /* ───────────── theme ───────────── */
@@ -87,6 +87,7 @@ function responseToCards(resp: CreateJourneyResponse): JourneyTrackingDTO[] {
     journeyId: i === 0 ? resp.journeyId : `${resp.journeyId}-alt-${i}`,
     status: 2,
     statusName: "tracking",
+    routeId: resp.routeId,
     originStopId: resp.originStopId,
     destinationStopId: resp.destinationStopId,
     activeBusId: rec.busId,
@@ -127,6 +128,7 @@ export default function JourneyScreen() {
     { lat: number; lon: number }[] | undefined
   >(undefined);
   const [routeStops, setRouteStops] = useState<RouteStop[] | null>(null);
+  const [userRouteStops, setUserRouteStops] = useState<RouteStop[] | null>(null);
 
   /* ── Shortcuts state ── */
   const [shortcuts, setShortcuts] = useState<Shortcut[]>(DEFAULT_SHORTCUTS);
@@ -425,7 +427,7 @@ export default function JourneyScreen() {
     } as BusDetailsDTO));
   }, [latestBus]);
 
-  /* ── Fetch route stops whenever the active route changes ── */
+  /* ── Fetch route stops for the bus's current route ── */
   useEffect(() => {
     if (!busDetails?.routeId) return;
     fetchRouteStops(busDetails.routeId).then((stops) => {
@@ -435,6 +437,18 @@ export default function JourneyScreen() {
       setRouteStops(stops);
     });
   }, [busDetails?.routeId]);
+
+  /* ── Fetch route stops for the user's journey route (may differ from bus route) ── */
+  const journeyRouteId = recommendations[0]?.routeId;
+  useEffect(() => {
+    if (!journeyRouteId) return;
+    fetchRouteStops(journeyRouteId).then((stops) => {
+      console.log(
+        "[journey] setUserRouteStops — count:", stops.length, "routeId:", journeyRouteId,
+      );
+      setUserRouteStops(stops);
+    });
+  }, [journeyRouteId]);
 
   /* ── Rebuild road polyline whenever bus position or route changes ── */
   useEffect(() => {
@@ -448,19 +462,29 @@ export default function JourneyScreen() {
     // Derive current stop from segmentPct for name labels.
     const { currentStop } = findStopAtPct(routeStops, segPct);
     setBusStopName(currentStop?.name ?? null);
-    console.log("[journey] bus stop name:", currentStop?.name, "segPct:", segPct);
 
     if (!originStopId) return;
-    const userStop = routeStops.find((s) => s.id === originStopId);
-    setUserStopName(userStop?.name ?? null);
-    console.log("[journey] user stop name:", userStop?.name, "id:", originStopId);
 
-    if (!userStop) return;
+    const isCrossRoute =
+      journeyRouteId &&
+      busDetails?.routeId &&
+      journeyRouteId !== busDetails.routeId;
 
-    // routeSegmentFromPct returns null when bus has passed the destination.
-    const coords = routeSegmentFromPct(routeStops, segPct, originStopId);
-    setRouteSegment(coords ?? undefined);
-  }, [routeStops, latestBus?.SegmentPct, recommendations[0]?.originStopId]);
+    if (isCrossRoute && userRouteStops && userRouteStops.length >= 2) {
+      // Bus is on the paired route — build combined polyline: bus→terminal + user route start→boarding stop
+      const userStop = userRouteStops.find((s) => s.id === originStopId);
+      setUserStopName(userStop?.name ?? null);
+      const coords = crossRouteSegmentFromPct(routeStops, userRouteStops, segPct, originStopId);
+      console.log("[journey] cross-route polyline coords:", coords?.length ?? 0);
+      setRouteSegment(coords ?? undefined);
+    } else {
+      // Same route — normal case
+      const userStop = routeStops.find((s) => s.id === originStopId);
+      setUserStopName(userStop?.name ?? null);
+      const coords = routeSegmentFromPct(routeStops, segPct, originStopId);
+      setRouteSegment(coords ?? undefined);
+    }
+  }, [routeStops, userRouteStops, latestBus?.SegmentPct, recommendations[0]?.originStopId, journeyRouteId, busDetails?.routeId]);
 
   /* ── Edit shortcut handlers ── */
   const handleEditStart = useCallback(() => {

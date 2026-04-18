@@ -45,6 +45,7 @@ export interface CreateJourneyRequest {
 export interface CreateJourneyResponse {
   status: 'created';
   journeyId: string;
+  routeId: string;
   originStopId: string;
   destinationStopId: string;
   requiredDirection: number;

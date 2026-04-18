@@ -6,7 +6,6 @@ import type { RouteStop } from '@/services/api/stops';
 // LEGACY DISABLED: roadPosition import commented out — only segmentPct path active.
 // Re-enable if restoring stopIndex+fractionalIndex fallback.
 // import { roadPosition, segmentPctToPosition } from '@/utils/routeGeometry';
-import { segmentPctToPosition } from '@/utils/routeGeometry';
 
 // Interpolation window in ms — covers roughly one GPS publish cycle (~2–3 s).
 // Keeping it at 3 s means the marker always has somewhere to move to, producing
@@ -82,22 +81,7 @@ export function useBusPosition(
       `hasBus=${!!bus}`,
       `busSegmentPct=${bus?.SegmentPct?.toFixed(4) ?? 'n/a'}`,
     );
-    if (!routeStops || routeStops.length < 2 || !bus) return;
-    const snapped = segmentPctToPosition(routeStops, bus.SegmentPct);
-    console.log(
-      `[busPos:snapOnLoad]`,
-      `segmentPct=${bus.SegmentPct.toFixed(4)}`,
-      `snapped=${snapped ? `${snapped.lat.toFixed(6)},${snapped.lon.toFixed(6)}` : 'null'}`,
-    );
-    if (!snapped) return;
-    // Snap without animation: set from === to === snapped so no LERP runs.
-    lerpRef.current = {
-      from: snapped,
-      to: snapped,
-      current: snapped,
-      startTime: Date.now(),
-    };
-    setDisplayPos(snapped);
+    // No snap-on-load needed — icon always uses raw GPS position.
   }, [routeStops]);
 
   // ── Interpolation ticker ──────────────────────────────────────────────────
@@ -186,8 +170,10 @@ export function useBusPosition(
 
       const stops = routeStopsRef.current;
       const hasStops = stops && stops.length >= 2;
-      const snapped = hasStops ? segmentPctToPosition(stops!, bus.SegmentPct) : null;
-      const target: DisplayPosition = snapped ?? {
+
+      // Always use raw GPS as the LERP target — truth beats road-snapping.
+      // segmentPct is still available on `bus` for polyline/nav-banner use.
+      const target: DisplayPosition = {
         lat: bus.Position.Lat,
         lon: bus.Position.Lon,
       };
@@ -198,7 +184,6 @@ export function useBusPosition(
         `stopIndex=${bus.StopIndex}`,
         `rawGPS=${bus.Position.Lat.toFixed(6)},${bus.Position.Lon.toFixed(6)}`,
         `stops=${hasStops ? stops!.length : 'NOT_LOADED'}`,
-        `snapped=${snapped ? `${snapped.lat.toFixed(6)},${snapped.lon.toFixed(6)}` : 'null→rawGPS'}`,
         `target=${target.lat.toFixed(6)},${target.lon.toFixed(6)}`,
       );
 

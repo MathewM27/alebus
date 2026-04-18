@@ -128,6 +128,8 @@ export function routeSegmentFromPct(
   stops: RouteStop[],
   segmentPct: number,
   toStopId: string,
+  busRawLat?: number,
+  busRawLon?: number,
 ): { lat: number; lon: number }[] | null {
   if (!stops || stops.length < 2 || segmentPct <= 0) return null;
 
@@ -142,7 +144,7 @@ export function routeSegmentFromPct(
   const busAbsDist = Math.min(segmentPct, 1) * totalLen;
 
   // Find which stop-to-stop segment the bus is currently on.
-  let busSegIdx = sorted.length - 2; // default: last segment
+  let busSegIdx = sorted.length - 2;
   for (let i = 0; i < sorted.length - 1; i++) {
     if (busAbsDist <= cumDists[i + 1]) {
       busSegIdx = i;
@@ -153,26 +155,34 @@ export function routeSegmentFromPct(
   // Bus has already passed the destination stop.
   if (busSegIdx >= toIdx) return null;
 
-  // Within-segment fraction along the current stop's pathToNext.
-  const segLen = cumDists[busSegIdx + 1] - cumDists[busSegIdx];
-  const withinFrac = segLen > 0 ? (busAbsDist - cumDists[busSegIdx]) / segLen : 0;
-
   const coords: { lat: number; lon: number }[] = [];
 
-  // Remainder of the current segment (road polyline from bus position forward).
-  const busPath = sorted[busSegIdx].pathToNext;
-  const effectivePath =
-    busPath && busPath.length >= 2
-      ? busPath
-      : [{ lat: sorted[busSegIdx].lat, lon: sorted[busSegIdx].lon },
-         { lat: sorted[busSegIdx + 1].lat, lon: sorted[busSegIdx + 1].lon }];
-  coords.push(...pathAfterFraction(effectivePath, withinFrac));
+  // Start from raw GPS if provided (truth), otherwise interpolate via segmentPct.
+  if (busRawLat !== undefined && busRawLon !== undefined) {
+    coords.push({ lat: busRawLat, lon: busRawLon });
+    // Connect raw GPS to end of current segment's road polyline.
+    const busPath = sorted[busSegIdx].pathToNext;
+    const segEnd = busPath && busPath.length >= 2
+      ? busPath[busPath.length - 1]
+      : { lat: sorted[busSegIdx + 1].lat, lon: sorted[busSegIdx + 1].lon };
+    coords.push(segEnd);
+  } else {
+    const segLen = cumDists[busSegIdx + 1] - cumDists[busSegIdx];
+    const withinFrac = segLen > 0 ? (busAbsDist - cumDists[busSegIdx]) / segLen : 0;
+    const busPath = sorted[busSegIdx].pathToNext;
+    const effectivePath =
+      busPath && busPath.length >= 2
+        ? busPath
+        : [{ lat: sorted[busSegIdx].lat, lon: sorted[busSegIdx].lon },
+           { lat: sorted[busSegIdx + 1].lat, lon: sorted[busSegIdx + 1].lon }];
+    coords.push(...pathAfterFraction(effectivePath, withinFrac));
+  }
 
   // Remaining segments between current and destination.
   for (let i = busSegIdx + 1; i < toIdx; i++) {
     const path = sorted[i].pathToNext;
     if (path && path.length >= 2) {
-      coords.push(...path.slice(1)); // skip first — already end of previous segment
+      coords.push(...path.slice(1));
     } else {
       coords.push({ lat: sorted[i].lat, lon: sorted[i].lon });
     }
@@ -243,6 +253,8 @@ export function crossRouteSegmentFromPct(
   userRouteStops: RouteStop[],
   segmentPct: number,
   toStopId: string,
+  busRawLat?: number,
+  busRawLon?: number,
 ): { lat: number; lon: number }[] | null {
   if (!busRouteStops || busRouteStops.length < 2 || segmentPct <= 0) return null;
   if (!userRouteStops || userRouteStops.length < 2) return null;
@@ -274,13 +286,22 @@ export function crossRouteSegmentFromPct(
   const coords: { lat: number; lon: number }[] = [];
 
   // Part 1: bus position → bus route terminal
-  const busPath = busSorted[busSegIdx].pathToNext;
-  const effectiveBusPath =
-    busPath && busPath.length >= 2
-      ? busPath
-      : [{ lat: busSorted[busSegIdx].lat, lon: busSorted[busSegIdx].lon },
-         { lat: busSorted[busSegIdx + 1].lat, lon: busSorted[busSegIdx + 1].lon }];
-  coords.push(...pathAfterFraction(effectiveBusPath, withinFrac));
+  if (busRawLat !== undefined && busRawLon !== undefined) {
+    coords.push({ lat: busRawLat, lon: busRawLon });
+    const busPath = busSorted[busSegIdx].pathToNext;
+    const segEnd = busPath && busPath.length >= 2
+      ? busPath[busPath.length - 1]
+      : { lat: busSorted[busSegIdx + 1].lat, lon: busSorted[busSegIdx + 1].lon };
+    coords.push(segEnd);
+  } else {
+    const busPath = busSorted[busSegIdx].pathToNext;
+    const effectiveBusPath =
+      busPath && busPath.length >= 2
+        ? busPath
+        : [{ lat: busSorted[busSegIdx].lat, lon: busSorted[busSegIdx].lon },
+           { lat: busSorted[busSegIdx + 1].lat, lon: busSorted[busSegIdx + 1].lon }];
+    coords.push(...pathAfterFraction(effectiveBusPath, withinFrac));
+  }
 
   for (let i = busSegIdx + 1; i < busSorted.length - 1; i++) {
     const path = busSorted[i].pathToNext;

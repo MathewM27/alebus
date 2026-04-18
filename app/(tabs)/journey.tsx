@@ -488,7 +488,7 @@ export default function JourneyScreen() {
       // Bus is on the paired route — build combined polyline: bus→terminal + user route start→boarding stop
       const userStop = userRouteStops.find((s) => s.id === originStopId);
       setUserStopName(userStop?.name ?? null);
-      const coords = crossRouteSegmentFromPct(routeStops, userRouteStops, segPct, originStopId);
+      const coords = crossRouteSegmentFromPct(routeStops, userRouteStops, segPct, originStopId, latestBus?.Position.Lat, latestBus?.Position.Lon);
       console.log("[journey] cross-route polyline coords:", coords?.length ?? 0);
       setRouteSegment(coords ?? undefined);
     } else {
@@ -499,7 +499,7 @@ export default function JourneyScreen() {
         `[journey:polyline] same-route — stopFound=${!!userStop} stopName=${userStop?.name ?? 'NOT_FOUND'}`,
         `stopId=${originStopId}`,
       );
-      const coords = routeSegmentFromPct(routeStops, segPct, originStopId);
+      const coords = routeSegmentFromPct(routeStops, segPct, originStopId, latestBus?.Position.Lat, latestBus?.Position.Lon);
       console.log(`[journey:polyline] routeSegmentFromPct → coords=${coords?.length ?? 'null'}`);
       setRouteSegment(coords ?? undefined);
     }

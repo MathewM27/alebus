@@ -58,7 +58,7 @@ import type { JourneyTrackingDTO } from "@/types/JourneyTracking";
 // LEGACY DISABLED: roadPosition, pathAfterFraction (with FractionalIndex) commented out.
 // Re-enable if restoring stopIndex+fractionalIndex fallback.
 // import { pathAfterFraction, roadPosition, segmentPctToPosition } from "@/utils/routeGeometry";
-import { crossRouteSegmentFromPct, findStopAtPct, routeSegmentFromPct, segmentPctToPosition } from "@/utils/routeGeometry";
+import { crossRouteSegmentFromPct, findStopAtPct, routeSegmentFromPct } from "@/utils/routeGeometry";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 /* ───────────── theme ───────────── */
@@ -593,14 +593,8 @@ export default function JourneyScreen() {
 
   const cameraTarget = useMemo(() => {
     if (!latestBus) return undefined;
-    // LEGACY DISABLED: roadPosition(routeStops, latestBus.StopIndex, ...) commented out.
-    // Re-enable if restoring stopIndex+fractionalIndex fallback.
-    const snapped =
-      routeStops && routeStops.length >= 2
-        ? segmentPctToPosition(routeStops, latestBus.SegmentPct)
-        : null;
-    return snapped ?? { lat: latestBus.Position.Lat, lon: latestBus.Position.Lon };
-  }, [latestBus, routeStops]);
+    return { lat: latestBus.Position.Lat, lon: latestBus.Position.Lon };
+  }, [latestBus]);
 
   /* ── Navigation banner data ── */
   const navBanner = useMemo(() => {

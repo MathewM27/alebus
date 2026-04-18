@@ -77,11 +77,18 @@ export function useBusPosition(
     // snap the LERP immediately to the road-snapped position so the marker
     // doesn't jump from the raw GPS fallback to the snapped road position.
     const bus = latestBusRef.current;
+    console.log(
+      `[busPos:stopsLoaded] count=${routeStops?.length ?? 0}`,
+      `hasBus=${!!bus}`,
+      `busSegmentPct=${bus?.SegmentPct?.toFixed(4) ?? 'n/a'}`,
+    );
     if (!routeStops || routeStops.length < 2 || !bus) return;
-    // LEGACY DISABLED — stopIndex+fractionalIndex snapping commented out.
-    // Only segmentPct-based snapping runs. Re-enable fallback if needed:
-    // : roadPosition(routeStops, bus.StopIndex, bus.FractionalIndex)
     const snapped = segmentPctToPosition(routeStops, bus.SegmentPct);
+    console.log(
+      `[busPos:snapOnLoad]`,
+      `segmentPct=${bus.SegmentPct.toFixed(4)}`,
+      `snapped=${snapped ? `${snapped.lat.toFixed(6)},${snapped.lon.toFixed(6)}` : 'null'}`,
+    );
     if (!snapped) return;
     // Snap without animation: set from === to === snapped so no LERP runs.
     lerpRef.current = {
@@ -141,6 +148,12 @@ export function useBusPosition(
     const offRaw = rawPositionClient.subscribe(busId, (raw) => {
       const s = lerpRef.current;
       const target: DisplayPosition = { lat: raw.lat, lon: raw.lon };
+      console.log(
+        `[busPos:raw] busId=${busId} seq=${raw.seq}`,
+        `lat=${raw.lat.toFixed(6)} lon=${raw.lon.toFixed(6)}`,
+        `speed=${raw.speed_ms.toFixed(1)}m/s bearing=${raw.bearing}°`,
+        `from=${s.current ? `${s.current.lat.toFixed(6)},${s.current.lon.toFixed(6)}` : 'null'}`,
+      );
       lerpRef.current = {
         from: s.current ?? target,
         to:   target,
@@ -154,42 +167,43 @@ export function useBusPosition(
       if (frame.bus.BusID !== busId) return;
 
       // Discard out-of-order frames (can arrive during reconnect replays).
-      if (frame.seq <= lastSeqRef.current) return;
+      if (frame.seq <= lastSeqRef.current) {
+        console.log(`[busPos:enriched] DISCARDED out-of-order seq=${frame.seq} lastSeq=${lastSeqRef.current}`);
+        return;
+      }
       lastSeqRef.current = frame.seq;
 
       const bus = frame.bus;
 
-      // Bug #2: secondary timestamp guard — discard frames whose device timestamp
-      // is at or before the last accepted frame. Guards against stale buffered
-      // frames replayed after a reconnect that the seq guard alone can't catch
-      // (seq resets to 0 on every new connection, so old frames from a previous
-      // connection with seq=1 would slip past a freshly reset seq guard).
       const frameTs = bus.Position.DeviceTimestampMs;
-      if (frameTs > 0 && frameTs <= lastTimestampRef.current) return;
+      if (frameTs > 0 && frameTs <= lastTimestampRef.current) {
+        console.log(`[busPos:enriched] DISCARDED stale ts=${frameTs} lastTs=${lastTimestampRef.current}`);
+        return;
+      }
       if (frameTs > 0) lastTimestampRef.current = frameTs;
       latestBusRef.current = bus;
       setLatestBus(bus);
 
-      // Compute road-snapped target when route geometry is available.
-      // Fall back to raw GPS if snapping returns null (e.g. first frame before stops load).
       const stops = routeStopsRef.current;
-      // LEGACY DISABLED — stopIndex+fractionalIndex snapping commented out.
-      // Re-enable fallback if needed:
-      // : roadPosition(stops, bus.StopIndex, bus.FractionalIndex)
-      const snapped =
-        stops && stops.length >= 2
-          ? segmentPctToPosition(stops, bus.SegmentPct)
-          : null;
+      const hasStops = stops && stops.length >= 2;
+      const snapped = hasStops ? segmentPctToPosition(stops!, bus.SegmentPct) : null;
       const target: DisplayPosition = snapped ?? {
         lat: bus.Position.Lat,
         lon: bus.Position.Lon,
       };
 
-      // Start a new LERP from wherever the marker is right now → snapped road position.
+      console.log(
+        `[busPos:enriched] seq=${frame.seq}`,
+        `segmentPct=${bus.SegmentPct.toFixed(4)}`,
+        `stopIndex=${bus.StopIndex}`,
+        `rawGPS=${bus.Position.Lat.toFixed(6)},${bus.Position.Lon.toFixed(6)}`,
+        `stops=${hasStops ? stops!.length : 'NOT_LOADED'}`,
+        `snapped=${snapped ? `${snapped.lat.toFixed(6)},${snapped.lon.toFixed(6)}` : 'null→rawGPS'}`,
+        `target=${target.lat.toFixed(6)},${target.lon.toFixed(6)}`,
+      );
+
       const s = lerpRef.current;
       lerpRef.current = {
-        // If we have a current displayed position use it; otherwise snap immediately
-        // (first frame after subscription — no animation needed).
         from: s.current ?? target,
         to:   target,
         current: s.current,

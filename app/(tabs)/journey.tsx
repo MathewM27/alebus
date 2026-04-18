@@ -429,10 +429,15 @@ export default function JourneyScreen() {
 
   /* ── Fetch route stops for the bus's current route ── */
   useEffect(() => {
-    if (!busDetails?.routeId) return;
+    if (!busDetails?.routeId) {
+      console.log("[journey:stops] busDetails.routeId not set yet — skipping fetch");
+      return;
+    }
+    console.log("[journey:stops] fetching bus route stops for routeId:", busDetails.routeId);
     fetchRouteStops(busDetails.routeId).then((stops) => {
+      const hasPathToNext = stops.filter(s => s.pathToNext && s.pathToNext.length >= 2).length;
       console.log(
-        "[journey] setRouteStops — count:", stops.length, "routeId:", busDetails.routeId,
+        `[journey:stops] bus route loaded — count=${stops.length} withPathToNext=${hasPathToNext} routeId=${busDetails.routeId}`,
       );
       setRouteStops(stops);
     });
@@ -453,11 +458,20 @@ export default function JourneyScreen() {
   /* ── Rebuild road polyline whenever bus position or route changes ── */
   useEffect(() => {
     const segPct = latestBus?.SegmentPct ?? 0;
+    const originStopId = recommendations[0]?.originStopId;
+    console.log(
+      `[journey:polyline] trigger — segPct=${segPct.toFixed(4)}`,
+      `routeStops=${routeStops?.length ?? 'null'}`,
+      `userRouteStops=${userRouteStops?.length ?? 'null'}`,
+      `originStopId=${originStopId ?? 'null'}`,
+      `busRouteId=${busDetails?.routeId ?? 'null'}`,
+      `journeyRouteId=${journeyRouteId ?? 'null'}`,
+      `isCrossRoute=${journeyRouteId && busDetails?.routeId && journeyRouteId !== busDetails.routeId}`,
+    );
     if (!routeStops || routeStops.length < 2 || segPct <= 0) {
       setRouteSegment(undefined);
       return;
     }
-    const originStopId = recommendations[0]?.originStopId;
 
     // Derive current stop from segmentPct for name labels.
     const { currentStop } = findStopAtPct(routeStops, segPct);
@@ -481,7 +495,12 @@ export default function JourneyScreen() {
       // Same route — normal case
       const userStop = routeStops.find((s) => s.id === originStopId);
       setUserStopName(userStop?.name ?? null);
+      console.log(
+        `[journey:polyline] same-route — stopFound=${!!userStop} stopName=${userStop?.name ?? 'NOT_FOUND'}`,
+        `stopId=${originStopId}`,
+      );
       const coords = routeSegmentFromPct(routeStops, segPct, originStopId);
+      console.log(`[journey:polyline] routeSegmentFromPct → coords=${coords?.length ?? 'null'}`);
       setRouteSegment(coords ?? undefined);
     }
   }, [routeStops, userRouteStops, latestBus?.SegmentPct, recommendations[0]?.originStopId, journeyRouteId, busDetails?.routeId]);

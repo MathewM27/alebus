@@ -30,14 +30,19 @@ export function toActiveJourneyCardModel(
 
   const busPlate = journey.activeBusId ?? activeRec?.busId ?? "—";
 
-  // When the bus stop and user boarding stop resolve to the same name, the bus has
-  // just passed (or is exactly at) the boarding stop. Prefix with "Passed" so the
-  // two labels are distinguishable and the user understands the bus is moving away.
+  // busStopName already carries a status prefix ("Arrived at X" / "Towards X").
+  // Fall back to legacy stopIndex label when unavailable.
   const resolvedBusStopName = busStopName ?? (busDetails ? (busDetails.isAtTerminal ? "Terminal" : `Stop ${busDetails.stopIndex}`) : "—");
   const resolvedUserStopName = userStopName ?? "—";
+
+  // Extract the raw stop name from the status label for the "Passed" comparison.
+  // Patterns: "Arrived at X", "Towards X", or raw "X" (legacy fallback).
+  const rawBusStopName = resolvedBusStopName
+    .replace(/^Arrived at /, "")
+    .replace(/^Towards /, "");
   const busStopLabel =
-    resolvedBusStopName !== "—" && resolvedBusStopName === resolvedUserStopName
-      ? `Passed ${resolvedBusStopName}`
+    rawBusStopName !== "—" && rawBusStopName === resolvedUserStopName && resolvedBusStopName.startsWith("Towards ")
+      ? `Passed ${resolvedUserStopName}`
       : resolvedBusStopName;
 
   return {

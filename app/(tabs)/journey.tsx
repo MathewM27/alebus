@@ -122,7 +122,6 @@ export default function JourneyScreen() {
 
   /* ── Bus / stop enrichment ── */
   const [busDetails, setBusDetails] = useState<BusDetailsDTO | null>(null);
-  const [busStopName, setBusStopName] = useState<string | null>(null);
   const [userStopName, setUserStopName] = useState<string | null>(null);
   const [routeSegment, setRouteSegment] = useState<
     { lat: number; lon: number }[] | undefined
@@ -263,7 +262,6 @@ export default function JourneyScreen() {
       setError(null);
       setRecommendations([]);
       setBusDetails(null);
-      setBusStopName(null);
       setUserStopName(null);
       setRouteSegment(undefined);
 
@@ -473,10 +471,6 @@ export default function JourneyScreen() {
       return;
     }
 
-    // Derive current stop from segmentPct for name labels.
-    const { currentStop } = findStopAtPct(routeStops, segPct);
-    setBusStopName(currentStop?.name ?? null);
-
     if (!originStopId) return;
 
     const isCrossRoute =
@@ -542,7 +536,6 @@ export default function JourneyScreen() {
     setRecommendations([]);
     setJourneyId(null);
     setBusDetails(null);
-    setBusStopName(null);
     setUserStopName(null);
     setRouteSegment(undefined);
     setError(null);
@@ -600,13 +593,18 @@ export default function JourneyScreen() {
   const navBanner = useMemo(() => {
     if (!latestBus || !routeStops || routeStops.length === 0) return null;
 
-    const { currentStop, nextStop, isAtStop } = findStopAtPct(routeStops, latestBus.SegmentPct);
+    const { currentStop, nextStop, isAtStop } = findStopAtPct(
+      routeStops,
+      latestBus.SegmentPct,
+      latestBus.Position.Lat,
+      latestBus.Position.Lon,
+    );
 
     let statusText: string;
     if (latestBus.IsAtTerminal) {
       statusText = `At ${currentStop?.name ?? "Terminal"}`;
     } else if (isAtStop && currentStop) {
-      statusText = `At ${currentStop.name}`;
+      statusText = `Arrived at ${currentStop.name}`;
     } else if (nextStop) {
       statusText = `Towards ${nextStop.name}`;
     } else {
@@ -624,6 +622,21 @@ export default function JourneyScreen() {
     }
 
     return { statusText, distText, isAtStop };
+  }, [latestBus, routeStops]);
+
+  // Derived synchronously from the same source as navBanner — no state lag.
+  const busStopName = useMemo<string | null>(() => {
+    if (!latestBus || !routeStops || routeStops.length === 0) return null;
+    const { currentStop, nextStop, isAtStop } = findStopAtPct(
+      routeStops,
+      latestBus.SegmentPct,
+      latestBus.Position.Lat,
+      latestBus.Position.Lon,
+    );
+    if (latestBus.IsAtTerminal) return currentStop?.name ?? "Terminal";
+    if (isAtStop && currentStop) return `Arrived at ${currentStop.name}`;
+    if (nextStop) return `Towards ${nextStop.name}`;
+    return currentStop?.name ?? null;
   }, [latestBus, routeStops]);
 
   /* ── Sheet content ── */

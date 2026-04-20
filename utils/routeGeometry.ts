@@ -157,25 +157,25 @@ export function routeSegmentFromPct(
 
   const coords: { lat: number; lon: number }[] = [];
 
-  // Start from raw GPS if provided (truth), otherwise interpolate via segmentPct.
+  // Compute the fractional position within the current segment regardless of mode.
+  const segLen = cumDists[busSegIdx + 1] - cumDists[busSegIdx];
+  const withinFrac = segLen > 0 ? (busAbsDist - cumDists[busSegIdx]) / segLen : 0;
+  const busPath = sorted[busSegIdx].pathToNext;
+  const effectivePath =
+    busPath && busPath.length >= 2
+      ? busPath
+      : [{ lat: sorted[busSegIdx].lat, lon: sorted[busSegIdx].lon },
+         { lat: sorted[busSegIdx + 1].lat, lon: sorted[busSegIdx + 1].lon }];
+  const roadAhead = pathAfterFraction(effectivePath, withinFrac);
+
   if (busRawLat !== undefined && busRawLon !== undefined) {
+    // Anchor to raw GPS, then follow road geometry for the rest of this segment.
+    // Skipping roadAhead[0] (the interpolated snap point) avoids a kink; we jump
+    // straight to the real road vertices that come after the bus's current position.
     coords.push({ lat: busRawLat, lon: busRawLon });
-    // Connect raw GPS to end of current segment's road polyline.
-    const busPath = sorted[busSegIdx].pathToNext;
-    const segEnd = busPath && busPath.length >= 2
-      ? busPath[busPath.length - 1]
-      : { lat: sorted[busSegIdx + 1].lat, lon: sorted[busSegIdx + 1].lon };
-    coords.push(segEnd);
+    if (roadAhead.length > 1) coords.push(...roadAhead.slice(1));
   } else {
-    const segLen = cumDists[busSegIdx + 1] - cumDists[busSegIdx];
-    const withinFrac = segLen > 0 ? (busAbsDist - cumDists[busSegIdx]) / segLen : 0;
-    const busPath = sorted[busSegIdx].pathToNext;
-    const effectivePath =
-      busPath && busPath.length >= 2
-        ? busPath
-        : [{ lat: sorted[busSegIdx].lat, lon: sorted[busSegIdx].lon },
-           { lat: sorted[busSegIdx + 1].lat, lon: sorted[busSegIdx + 1].lon }];
-    coords.push(...pathAfterFraction(effectivePath, withinFrac));
+    coords.push(...roadAhead);
   }
 
   // Remaining segments between current and destination.
@@ -201,11 +201,14 @@ export function routeSegmentFromPct(
  * Returns { currentStop, nextStop, isAtStop } where:
  *   currentStop — the last stop the bus has reached or passed
  *   nextStop    — the stop immediately ahead (null if at the terminal)
- *   isAtStop    — true when the bus is within 2% of totalRouteLength of currentStop
+ *   isAtStop    — true when bus is within 30 m of currentStop (haversine when
+ *                 busLat/busLon provided) or within 2% of totalRouteLength otherwise
  */
 export function findStopAtPct(
   stops: RouteStop[],
   segmentPct: number,
+  busLat?: number,
+  busLon?: number,
 ): { currentStop: RouteStop | null; nextStop: RouteStop | null; isAtStop: boolean } {
   const none = { currentStop: null, nextStop: null, isAtStop: false };
   if (!stops || stops.length === 0 || segmentPct <= 0) return none;
@@ -229,9 +232,19 @@ export function findStopAtPct(
   const currentStop = sorted[currentIdx];
   const nextStop = currentIdx < sorted.length - 1 ? sorted[currentIdx + 1] : null;
 
-  // "At stop" when within 2% of totalLen of the stop's position.
-  const distToStop = Math.abs(busAbsDist - cumDists[currentIdx]);
-  const isAtStop = distToStop / totalLen < 0.02;
+  let isAtStop: boolean;
+  if (busLat != null && busLon != null) {
+    // Prefer 30 m haversine proximity when live coordinates are available.
+    const distToStopM = haversine(
+      { lat: busLat, lon: busLon },
+      { lat: currentStop.lat, lon: currentStop.lon },
+    );
+    isAtStop = distToStopM <= 30;
+  } else {
+    // Fallback: within 2% of total route length of the stop's cumulative position.
+    const distToStop = Math.abs(busAbsDist - cumDists[currentIdx]);
+    isAtStop = distToStop / totalLen < 0.02;
+  }
 
   return { currentStop, nextStop, isAtStop };
 }
@@ -286,21 +299,18 @@ export function crossRouteSegmentFromPct(
   const coords: { lat: number; lon: number }[] = [];
 
   // Part 1: bus position → bus route terminal
+  const effectiveBusPath =
+    busSorted[busSegIdx].pathToNext && busSorted[busSegIdx].pathToNext!.length >= 2
+      ? busSorted[busSegIdx].pathToNext!
+      : [{ lat: busSorted[busSegIdx].lat, lon: busSorted[busSegIdx].lon },
+         { lat: busSorted[busSegIdx + 1].lat, lon: busSorted[busSegIdx + 1].lon }];
+  const busRoadAhead = pathAfterFraction(effectiveBusPath, withinFrac);
+
   if (busRawLat !== undefined && busRawLon !== undefined) {
     coords.push({ lat: busRawLat, lon: busRawLon });
-    const busPath = busSorted[busSegIdx].pathToNext;
-    const segEnd = busPath && busPath.length >= 2
-      ? busPath[busPath.length - 1]
-      : { lat: busSorted[busSegIdx + 1].lat, lon: busSorted[busSegIdx + 1].lon };
-    coords.push(segEnd);
+    if (busRoadAhead.length > 1) coords.push(...busRoadAhead.slice(1));
   } else {
-    const busPath = busSorted[busSegIdx].pathToNext;
-    const effectiveBusPath =
-      busPath && busPath.length >= 2
-        ? busPath
-        : [{ lat: busSorted[busSegIdx].lat, lon: busSorted[busSegIdx].lon },
-           { lat: busSorted[busSegIdx + 1].lat, lon: busSorted[busSegIdx + 1].lon }];
-    coords.push(...pathAfterFraction(effectiveBusPath, withinFrac));
+    coords.push(...busRoadAhead);
   }
 
   for (let i = busSegIdx + 1; i < busSorted.length - 1; i++) {

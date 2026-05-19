@@ -15,35 +15,18 @@ A passenger opens the app, types where they are and where they want to go, and t
 
 ## Screenshots
 
-### Home — Find Your Bus
-
-![Home Screen](docs/screenshots/home.png)
-
-*Home screen — map preview with "Find Your Bus" bottom sheet. Origin fills from device GPS or manual stop search. Destination selected from route stop autocomplete.*
-
-### Home — Stop Search Active
-
-![Search Active](docs/screenshots/home-search.png)
-
-*Bottom sheet expanded with origin and destination typeahead against all route stops.*
-
-### Journey — Live Tracking
-
-![Live Tracking](docs/screenshots/journey-tracking.png)
-
-*Full-screen map with live bus marker, road-accurate route polyline from bus to boarding stop, and navigation banner showing current stop, next stop, and distance remaining.*
-
-### Sign In
-
-![Sign In](docs/screenshots/sign-in.png)
-
-*Authentication screen — magic link and Google OAuth via Supabase. Lime-green accent on dark background.*
-
-### Settings
-
-![Settings](docs/screenshots/settings.png)
-
-*Settings screen — map theme picker (dark/light tile styles), profile editor, and subscription UI.*
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/home.png" width="220"/><br/><sub>Home</sub></td>
+    <td align="center"><img src="docs/screenshots/home-search.png" width="220"/><br/><sub>Stop Search</sub></td>
+    <td align="center"><img src="docs/screenshots/journey-tracking.png" width="220"/><br/><sub>Live Tracking</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/sign-in.png" width="220"/><br/><sub>Sign In</sub></td>
+    <td align="center"><img src="docs/screenshots/settings.png" width="220"/><br/><sub>Settings</sub></td>
+    <td></td>
+  </tr>
+</table>
 
 ---
 

@@ -35,6 +35,15 @@ yarn-error.*
 .env.*
 .env*.local
 
+# internal docs with infrastructure/credential details
+completeMobileAuth.md
+
+# Expo device registry (contains personal device UUIDs)
+.expo/devices.json
+
+# generated map style (references internal tile worker URLs)
+style.json
+
 # typescript
 *.tsbuildinfo
 

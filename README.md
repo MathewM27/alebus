@@ -218,46 +218,6 @@ App foregrounded with active journey:
 
 ---
 
-## Local Setup
-
-### Prerequisites
-
-- Node.js 18+
-- Expo CLI (`npm install -g expo-cli`)
-- Android Studio (for Android) or Xcode (for iOS)
-- A running instance of the Alebus backend API
-
-### Environment variables
-
-Create a `.env` file in the project root:
-
-```env
-EXPO_PUBLIC_API_BASE_URL=http://<your-backend-host>/api/v1
-EXPO_PUBLIC_SUPABASE_URL=https://<your-project>.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=<your-supabase-anon-key>
-API_KEY_ANDROID=<google-maps-api-key>
-API_KEY_IOS=<google-maps-api-key>
-```
-
-### Running
-
-```bash
-npm install
-
-# Start Expo dev server
-npx expo start
-
-# Run on Android (requires dev build — not compatible with Expo Go due to MapLibre)
-npx expo run:android
-
-# Run on iOS
-npx expo run:ios
-```
-
-> MapLibre React Native requires a native dev build. The app will not run in Expo Go.
-
----
-
 ## Known Limitations
 
 - **Search tab** — renders correctly but is not wired to any API; stop search is only available on the Home tab
